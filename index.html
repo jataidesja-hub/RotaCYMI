@@ -49,80 +49,85 @@
 <body class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
 
   <!-- ========================================================================
-       BARRA SUPERIOR GLOBAL (CABEÇALHO + STATUS + INSTALADOR PWA + CONFIG API)
+       BARRA SUPERIOR GLOBAL (CABEÇALHO RESPONSIVO MOBILE-FIRST + BOTÃO SAIR FIXO)
        ======================================================================== -->
-  <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80 px-4 py-3">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-      <!-- Identidade Visual -->
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 p-[2px] shadow-lg shadow-sky-500/20">
-          <div class="w-full h-full bg-[#090d16] rounded-[10px] flex items-center justify-center">
-            <i data-lucide="bus" class="w-5 h-5 text-sky-400"></i>
+  <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80 px-3 sm:px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-col gap-2">
+      
+      <!-- Linha 1 do Topo: Marca RotaCYMI à esquerda + Usuário e Botão SAIR sempre visíveis à direita -->
+      <div class="flex items-center justify-between gap-2">
+        <!-- Identidade Visual -->
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 p-[2px] shadow-lg shadow-sky-500/20 shrink-0">
+            <div class="w-full h-full bg-[#090d16] rounded-[10px] flex items-center justify-center">
+              <i data-lucide="bus" class="w-4 h-4 sm:w-5 sm:h-5 text-sky-400"></i>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h1 class="text-sm sm:text-lg font-extrabold tracking-tight text-white">Rota<span class="text-sky-400">CYMI</span></h1>
+              <span id="badge-connection-mode" class="status-pill live !text-[10px] !py-0.5 !px-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span id="text-connection-mode">Tempo Real</span>
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400 hidden md:block">Gestão e Rastreamento Corporativo de Frotas 2D/3D</p>
           </div>
         </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white">Rota<span class="text-sky-400">CYMI</span></h1>
-            <span id="badge-connection-mode" class="status-pill live text-[11px]">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span id="text-connection-mode">Tempo Real</span>
-            </span>
+
+        <!-- Perfil do Usuário Logado + Botão SAIR sempre visível no canto superior direito -->
+        <div id="header-user-box" class="hidden items-center gap-2 shrink-0">
+          <img id="header-user-avatar" src="" alt="Foto" class="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-sky-400/50 hidden" />
+          <div class="text-right">
+            <div id="header-user-name" class="text-[11px] sm:text-xs font-bold text-white leading-tight max-w-[110px] sm:max-w-[180px] truncate">Usuário</div>
+            <div id="header-user-role" class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-sky-400">ADMIN</div>
           </div>
-          <p class="text-xs text-slate-400 hidden sm:block">Gestão e Rastreamento Corporativo de Frotas 2D/3D</p>
+          <button id="btn-logout" type="button" class="btn-secondary !py-1.5 !px-2.5 text-xs text-rose-300 border-rose-500/40 bg-rose-950/30 hover:bg-rose-900/40 shrink-0" title="Encerrar Sessão">
+            <i data-lucide="log-out" class="w-3.5 h-3.5 text-rose-400"></i>
+            <span class="font-bold">Sair</span>
+          </button>
         </div>
       </div>
 
-      <!-- Ações Globais Direita -->
-      <div class="flex items-center gap-2 sm:gap-3">
-        <!-- Alternador Rápido de Visão para o Admin Master (Admin / Motorista 3D / Passageiro) -->
-        <div id="admin-view-switcher" class="hidden items-center bg-slate-900/90 border border-slate-700/80 rounded-xl p-1 gap-1">
-          <button type="button" data-switch-view="ADMIN" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition">
+      <!-- Linha 2 do Topo: Alternador de Painéis (Admin / Motorista 3D / Passageiro) + Botões Rápidos (100% visíveis no celular) -->
+      <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/60">
+        <!-- Alternador Rápido de Visão para o Admin Master -->
+        <div id="admin-view-switcher" class="hidden grid-cols-3 sm:inline-flex items-center bg-slate-900/95 border border-slate-700/80 rounded-xl p-1 gap-1 w-full sm:w-auto">
+          <button type="button" data-switch-view="ADMIN" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition text-center truncate">
             Admin
           </button>
-          <button type="button" data-switch-view="MOTORISTA" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition">
+          <button type="button" data-switch-view="MOTORISTA" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition text-center truncate">
             Motorista 3D
           </button>
-          <button type="button" data-switch-view="PASSAGEIRO" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition">
+          <button type="button" data-switch-view="PASSAGEIRO" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition text-center truncate">
             Passageiro
           </button>
         </div>
 
-        <!-- Botão Global de Modo Satélite / Mapa Vetorial -->
-        <button id="btn-global-satellite" type="button" data-toggle-satellite="all" class="btn-secondary !py-2 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Alternar todos os mapas entre Satélite Real e Mapa Escuro">
-          <i data-lucide="satellite" class="w-4 h-4 text-emerald-400"></i>
-          <span class="label-satellite-state">Modo Satélite</span>
-        </button>
+        <!-- Botões de Ferramentas (Satélite, Instalar App, Sincronizar, API Sheets) -->
+        <div class="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end">
+          <button id="btn-global-satellite" type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-[11px] border-emerald-500/40 text-emerald-300 flex-1 sm:flex-initial justify-center" title="Alternar todos os mapas entre Satélite Real e Mapa Escuro">
+            <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+            <span class="label-satellite-state truncate">Satélite</span>
+          </button>
 
-        <!-- Botão Inteligente Instalar App (Android / iOS / PWA) -->
-        <button id="btn-pwa-install" type="button" class="btn-secondary !py-2 !px-3 text-xs border-sky-500/40 text-sky-300" title="Instalar Aplicativo no Celular">
-          <i data-lucide="smartphone-charging" class="w-4 h-4 text-sky-400"></i>
-          <span id="label-pwa-install" class="hidden sm:inline">Instalar App</span>
-        </button>
+          <button id="btn-pwa-install" type="button" class="btn-secondary !py-1.5 !px-2.5 text-[11px] border-sky-500/40 text-sky-300 flex-1 sm:flex-initial justify-center" title="Instalar Aplicativo no Celular">
+            <i data-lucide="smartphone-charging" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
+            <span id="label-pwa-install" class="truncate">Instalar</span>
+          </button>
 
-        <!-- Botão de Sincronização Manual -->
-        <button id="btn-sync-now" type="button" class="btn-secondary !py-2 !px-3 text-xs" title="Sincronizar com Google Sheets">
-          <i data-lucide="refresh-cw" id="icon-sync-spin" class="w-4 h-4 text-emerald-400"></i>
-          <span class="hidden md:inline">Sincronizar</span>
-        </button>
+          <button id="btn-sync-now" type="button" class="btn-secondary !py-1.5 !px-2.5 text-[11px] flex-1 sm:flex-initial justify-center" title="Sincronizar com Google Sheets">
+            <i data-lucide="refresh-cw" id="icon-sync-spin" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+            <span class="truncate">Sincronizar</span>
+          </button>
 
-        <!-- Botão Discreto de Configuração da URL do Google Apps Script -->
-        <button id="btn-open-api-config" type="button" class="btn-secondary !py-2 !px-3 text-xs" title="Configurar URL da Planilha Google Apps Script">
-          <i data-lucide="database" class="w-4 h-4 text-amber-400"></i>
-          <span class="hidden lg:inline">API Sheets</span>
-        </button>
-
-        <!-- Perfil do Usuário Logado + Sair -->
-        <div id="header-user-box" class="hidden items-center gap-2 pl-2 border-l border-slate-800">
-          <img id="header-user-avatar" src="" alt="Foto" class="w-8 h-8 rounded-full object-cover border border-sky-400/50 hidden" />
-          <div class="text-right hidden sm:block">
-            <div id="header-user-name" class="text-xs font-bold text-white leading-tight">Usuário</div>
-            <div id="header-user-role" class="text-[10px] font-mono uppercase tracking-wider text-sky-400">ADMIN</div>
-          </div>
-          <button id="btn-logout" type="button" class="btn-secondary !py-2 !px-2.5 text-xs text-rose-400 hover:border-rose-500/50" title="Encerrar Sessão">
-            <i data-lucide="log-out" class="w-4 h-4"></i>
+          <button id="btn-open-api-config" type="button" class="btn-secondary !py-1.5 !px-2.5 text-[11px] flex-1 sm:flex-initial justify-center" title="Configurar URL da Planilha Google Apps Script">
+            <i data-lucide="database" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+            <span class="truncate">Planilha</span>
           </button>
         </div>
       </div>
+
     </div>
   </header>
 
@@ -188,36 +193,36 @@
   <!-- ========================================================================
        MÓDULO 1: PAINEL ADMINISTRATIVO (ADMIN)
        ======================================================================== -->
-  <section id="view-admin" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-4 gap-4">
+  <section id="view-admin" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-3 sm:px-4 py-3 sm:py-4 gap-4">
     
-    <!-- Barra de Navegação das Sub-Abas do Admin + KPIs Rápidos -->
-    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 card-surface p-3">
-      <div class="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
-        <button type="button" data-admin-tab="tower" class="nav-tab active">
-          <i data-lucide="radar" class="w-4 h-4"></i>
+    <!-- Barra de Navegação das Sub-Abas do Admin (Grade Responsiva Visível no Celular sem precisar arrastar para o lado) -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 card-surface p-2.5 sm:p-3">
+      <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5">
+        <button type="button" data-admin-tab="tower" class="nav-tab active col-span-2 sm:col-span-1 justify-center">
+          <i data-lucide="radar" class="w-4 h-4 shrink-0"></i>
           <span>Torre de Controle (Ao Vivo)</span>
         </button>
-        <button type="button" data-admin-tab="routes" class="nav-tab">
-          <i data-lucide="route" class="w-4 h-4"></i>
+        <button type="button" data-admin-tab="routes" class="nav-tab justify-center">
+          <i data-lucide="route" class="w-4 h-4 shrink-0"></i>
           <span>Construtor de Rotas</span>
         </button>
-        <button type="button" data-admin-tab="passengers" class="nav-tab">
-          <i data-lucide="users" class="w-4 h-4"></i>
+        <button type="button" data-admin-tab="passengers" class="nav-tab justify-center">
+          <i data-lucide="users" class="w-4 h-4 shrink-0"></i>
           <span>Funcionários (<span id="kpi-count-passengers">0</span>)</span>
         </button>
-        <button type="button" data-admin-tab="fleet" class="nav-tab">
-          <i data-lucide="bus" class="w-4 h-4"></i>
+        <button type="button" data-admin-tab="fleet" class="nav-tab justify-center">
+          <i data-lucide="bus" class="w-4 h-4 shrink-0"></i>
           <span>Frota (<span id="kpi-count-fleet">0</span>)</span>
         </button>
-        <button type="button" data-admin-tab="drivers" class="nav-tab">
-          <i data-lucide="id-card" class="w-4 h-4"></i>
+        <button type="button" data-admin-tab="drivers" class="nav-tab justify-center">
+          <i data-lucide="id-card" class="w-4 h-4 shrink-0"></i>
           <span>Motoristas (<span id="kpi-count-drivers">0</span>)</span>
         </button>
       </div>
 
       <!-- Simulador de Telemetria para Testes da Torre de Controle -->
       <div class="flex items-center gap-2 shrink-0">
-        <button type="button" id="btn-toggle-demo-sim" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+        <button type="button" id="btn-toggle-demo-sim" class="btn-secondary w-full lg:w-auto justify-center !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
           <i data-lucide="play" class="w-3.5 h-3.5"></i>
           <span id="label-demo-sim">Simular Ônibus em Movimento</span>
         </button>
@@ -870,19 +875,19 @@
         <div class="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
           <i data-lucide="compass" class="w-6 h-6"></i>
         </div>
-        <div>
-          <div class="flex flex-wrap items-center gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-1.5">
             <span id="driver-hud-status" class="status-pill idle">AGUARDANDO INÍCIO</span>
             <span id="driver-wakelock-badge" class="status-pill idle text-[11px]">
               <i data-lucide="sun" class="w-3 h-3"></i>
               <span id="driver-wakelock-text">Wake Lock Inativo</span>
             </span>
           </div>
-          <div class="flex flex-wrap items-center gap-2 mt-1">
-            <h2 id="driver-route-title" class="text-lg font-extrabold text-white">Rota Vinculada</h2>
-            <select id="driver-select-route" class="input-field !w-auto !py-1 !px-2.5 !text-xs font-bold text-sky-300" title="Selecionar Rota de IDA ou VOLTA para abrir"></select>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-1.5 mt-1.5">
+            <h2 id="driver-route-title" class="text-base sm:text-lg font-extrabold text-white truncate">Rota Vinculada</h2>
+            <select id="driver-select-route" class="input-field w-full sm:!w-auto max-w-full !py-1.5 !px-2.5 !text-xs font-bold text-sky-300" title="Selecionar Rota de IDA ou VOLTA para abrir"></select>
           </div>
-          <p id="driver-vehicle-subtitle" class="text-xs text-slate-400 mt-0.5">Veículo • Turno</p>
+          <p id="driver-vehicle-subtitle" class="text-xs text-slate-400 mt-0.5 truncate">Veículo • Turno</p>
         </div>
       </div>
 

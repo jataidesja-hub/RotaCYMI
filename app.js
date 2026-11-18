@@ -1038,8 +1038,8 @@
     document.querySelectorAll('[data-switch-view]').forEach((btn) => {
       const isTarget = btn.getAttribute('data-switch-view') === targetRole;
       btn.className = isTarget
-        ? 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition'
-        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition';
+        ? 'px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition text-center truncate'
+        : 'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition text-center truncate';
     });
 
     document.getElementById('view-auth').classList.add('hidden');
@@ -1179,10 +1179,10 @@
     if (switcherEl) {
       if (state.isMasterAdminSession) {
         switcherEl.classList.remove('hidden');
-        switcherEl.classList.add('flex');
+        switcherEl.classList.add('grid');
       } else {
         switcherEl.classList.add('hidden');
-        switcherEl.classList.remove('flex');
+        switcherEl.classList.remove('grid');
       }
     }
 
@@ -1223,8 +1223,12 @@
     state.currentUser = null;
     state.isMasterAdminSession = false;
 
-    document.getElementById('header-user-box').classList.add('hidden');
-    document.getElementById('admin-view-switcher')?.classList.add('hidden');
+    const userBox = document.getElementById('header-user-box');
+    userBox?.classList.add('hidden');
+    userBox?.classList.remove('flex');
+    const switcherEl = document.getElementById('admin-view-switcher');
+    switcherEl?.classList.add('hidden');
+    switcherEl?.classList.remove('grid');
     document.getElementById('view-admin').classList.add('hidden');
     document.getElementById('view-passenger').classList.add('hidden');
     document.getElementById('view-driver').classList.add('hidden');

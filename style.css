@@ -433,8 +433,8 @@ body {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
@@ -442,13 +442,29 @@ body {
 
 .nav-tab:hover {
   color: var(--text-primary);
-  background: rgba(30, 41, 59, 0.5);
+  background: rgba(30, 41, 59, 0.65);
 }
 
 .nav-tab.active {
   color: #38bdf8;
-  background: rgba(14, 165, 233, 0.14);
-  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(14, 165, 233, 0.16);
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+@media (max-width: 640px) {
+  .nav-tab {
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .btn-secondary,
+  .btn-primary,
+  .btn-emerald,
+  .btn-danger {
+    max-width: 100%;
+  }
 }
 
 /* Status Badges */
