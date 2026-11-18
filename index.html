@@ -127,139 +127,61 @@
   </header>
 
   <!-- ========================================================================
-       TELA DE AUTENTICAÇÃO (LOGIN + ACESSO RÁPIDO + LEMBRAR-ME)
+       TELA DE AUTENTICAÇÃO (LOGIN DE ACESSO À PLATAFORMA)
        ======================================================================== -->
   <main id="view-auth" class="flex-1 flex items-center justify-center p-4 sm:p-6">
-    <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-      
-      <!-- Coluna Esquerda: Apresentação Operacional -->
-      <div class="lg:col-span-6 card-surface p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
+    <div class="w-full max-w-md card-surface p-6 sm:p-8 flex flex-col justify-center">
+      <div class="mb-6 text-center">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-400 mb-3">
+          <i data-lucide="bus-front" class="w-6 h-6"></i>
+        </div>
+        <h2 class="text-xl font-extrabold text-white">Acessar Plataforma RotaCYMI</h2>
+        <p class="text-xs text-slate-400 mt-1">Entre com seu e-mail e senha para abrir seu painel.</p>
+      </div>
+
+      <form id="form-login" class="space-y-4">
         <div>
-          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-semibold mb-4">
-            <i data-lucide="radar" class="w-3.5 h-3.5"></i>
-            Telemetria GPS &amp; Rotas OSRM em Tempo Real
-          </div>
-          <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
-            Controle total do transporte corporativo <span class="text-sky-400">CYMI</span>.
-          </h2>
-          <p class="text-sm text-slate-300 mt-3 leading-relaxed">
-            Acompanhe ônibus ao vivo no mapa, localize o ponto de embarque mais próximo via Haversine, navegue em 3D no painel do motorista e gerencie toda a operação integrada gratuitamente ao Google Sheets.
-          </p>
+          <label for="login-email" class="block text-xs font-semibold text-slate-300 mb-1.5">E-mail de Acesso</label>
+          <input id="login-email" type="email" required class="input-field" placeholder="Digite seu e-mail" />
+        </div>
 
-          <div class="mt-6 space-y-3">
-            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-              <div class="p-2 rounded-lg bg-sky-500/15 text-sky-400">
-                <i data-lucide="shield-check" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-white">1. Torre de Controle (ADMIN)</h3>
-                <p class="text-xs text-slate-400">CRUD de passageiros, frota, motoristas, construtor visual de rotas OSRM e monitoramento global.</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-              <div class="p-2 rounded-lg bg-emerald-500/15 text-emerald-400">
-                <i data-lucide="map-pin" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-white">2. App do Colaborador (PASSAGEIRO)</h3>
-                <p class="text-xs text-slate-400">Ônibus ao vivo, cálculo de distância em metros até o ponto mais próximo e confirmação rápida de embarque.</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-              <div class="p-2 rounded-lg bg-amber-500/15 text-amber-400">
-                <i data-lucide="compass" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-white">3. Cockpit 3D (MOTORISTA)</h3>
-                <p class="text-xs text-slate-400">Câmera em perspectiva 3D (<code class="text-amber-300">pitch: 65</code>), Wake Lock ativo e envio contínuo de telemetria GPS.</p>
-              </div>
-            </div>
+        <div>
+          <label for="login-password" class="block text-xs font-semibold text-slate-300 mb-1.5">Senha de Acesso</label>
+          <div class="relative">
+            <input id="login-password" type="password" required class="input-field pr-10" placeholder="••••••••" />
+            <button type="button" id="btn-toggle-login-pass" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
           </div>
         </div>
 
-        <!-- Preenchimento Rápido de Credenciais para Teste Imediato -->
-        <div class="mt-6 pt-5 border-t border-slate-800/80">
-          <p class="text-xs font-semibold text-slate-400 mb-2.5">Acesso Rápido (Credencial Master &amp; Perfis de Demonstração):</p>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button type="button" data-quick-login="admin" class="btn-secondary !py-2 !px-3 text-xs justify-start">
-              <i data-lucide="key-round" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
-              <div class="text-left truncate">
-                <div class="font-bold text-white">Admin Master</div>
-                <div class="text-[10px] text-slate-400 truncate">jasantos@cymibr.com</div>
-              </div>
-            </button>
-            <button type="button" data-quick-login="driver" class="btn-secondary !py-2 !px-3 text-xs justify-start">
-              <i data-lucide="steering-wheel" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
-              <div class="text-left truncate">
-                <div class="font-bold text-white">Motorista 3D</div>
-                <div class="text-[10px] text-slate-400 truncate">carlos.mot@cymibr.com</div>
-              </div>
-            </button>
-            <button type="button" data-quick-login="passenger" class="btn-secondary !py-2 !px-3 text-xs justify-start">
-              <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
-              <div class="text-left truncate">
-                <div class="font-bold text-white">Passageiro</div>
-                <div class="text-[10px] text-slate-400 truncate">mariana.silva@cymibr.com</div>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Coluna Direita: Formulário de Login -->
-      <div class="lg:col-span-6 card-surface p-6 sm:p-8 flex flex-col justify-center">
-        <div class="mb-6">
-          <h2 class="text-xl font-bold text-white">Acessar Plataforma</h2>
-          <p class="text-xs text-slate-400 mt-1">Entre com seu e-mail corporativo e senha para abrir seu painel.</p>
+        <div class="flex items-center justify-between pt-1">
+          <label class="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+            <input id="login-remember" type="checkbox" checked class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500" />
+            <span>Lembrar minha sessão neste dispositivo</span>
+          </label>
         </div>
 
-        <form id="form-login" class="space-y-4">
-          <div>
-            <label for="login-email" class="block text-xs font-semibold text-slate-300 mb-1.5">E-mail Corporativo</label>
-            <input id="login-email" type="email" required class="input-field" placeholder="ex: jasantos@cymibr.com" value="jasantos@cymibr.com" />
-          </div>
+        <button type="submit" id="btn-submit-login" class="btn-primary w-full py-3 text-sm mt-2">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span>Entrar no Sistema</span>
+        </button>
 
-          <div>
-            <label for="login-password" class="block text-xs font-semibold text-slate-300 mb-1.5">Senha de Acesso</label>
-            <div class="relative">
-              <input id="login-password" type="password" required class="input-field pr-10" placeholder="••••••••" value="Sabre0858" />
-              <button type="button" id="btn-toggle-login-pass" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
-                <i data-lucide="eye" class="w-4 h-4"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between pt-1">
-            <label class="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-              <input id="login-remember" type="checkbox" checked class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500" />
-              <span>Lembrar minha sessão neste dispositivo</span>
-            </label>
-          </div>
-
-          <button type="submit" id="btn-submit-login" class="btn-primary w-full py-3 text-sm mt-2">
-            <i data-lucide="log-in" class="w-4 h-4"></i>
-            <span>Entrar no Sistema</span>
-          </button>
-
-          <div class="pt-3 border-t border-slate-800/80">
-            <button type="button" id="btn-open-self-signup" class="btn-secondary w-full py-2.5 text-xs border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">
-              <i data-lucide="user-plus" class="w-4 h-4 text-emerald-400"></i>
-              <span>Sou Funcionário Novo — Quero me Cadastrar na Rota</span>
-            </button>
-          </div>
-        </form>
-
-        <div class="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-          <span>Banco Serverless Google Sheets</span>
-          <button type="button" id="btn-auth-open-api" class="text-sky-400 hover:underline font-semibold flex items-center gap-1">
-            <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
-            Configurar URL do Apps Script
+        <div class="pt-3 border-t border-slate-800/80">
+          <button type="button" id="btn-open-self-signup" class="btn-secondary w-full py-2.5 text-xs border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">
+            <i data-lucide="user-plus" class="w-4 h-4 text-emerald-400"></i>
+            <span>Sou Funcionário Novo — Quero me Cadastrar</span>
           </button>
         </div>
-      </div>
+      </form>
 
+      <div class="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+        <span>RotaCYMI • Juazeiro / Petrolina</span>
+        <button type="button" id="btn-auth-open-api" class="text-sky-400 hover:underline font-semibold flex items-center gap-1">
+          <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
+          API Sheets
+        </button>
+      </div>
     </div>
   </main>
 
@@ -786,6 +708,18 @@
       </div>
     </div>
 
+    <!-- Barra de Rotas Disponíveis para o Funcionário (Mostra as duas rotas / todas as rotas e o ponto mais próximo) -->
+    <div class="card-surface p-3.5">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        <div class="flex items-center gap-2">
+          <i data-lucide="route" class="w-4 h-4 text-sky-400"></i>
+          <span class="text-xs font-bold uppercase tracking-wider text-white">Rotas Disponíveis &amp; Ponto Mais Próximo de Você</span>
+        </div>
+        <span class="text-[11px] text-slate-400">Toque em uma rota para focar ou veja todas juntas no mapa</span>
+      </div>
+      <div id="pax-routes-cards-container" class="grid grid-cols-1 md:grid-cols-3 gap-2.5"></div>
+    </div>
+
     <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Mais Próximo (Haversine) -->
     <div id="pax-tab-map" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       <!-- Mapa de Rastreamento ao Vivo -->
@@ -1173,23 +1107,11 @@
           </div>
         </div>
 
-        <!-- Rota e Ponto de Embarque -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Qual Rota você utiliza? *</label>
-            <select id="signup-route" required class="input-field"></select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Ponto de Embarque Mais Próximo</label>
-            <select id="signup-stop" class="input-field"></select>
-          </div>
-        </div>
-
         <!-- Endereço e Localização GPS em Juazeiro / Petrolina -->
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço Residencial (Rua, Nº, Bairro, Cidade) *</label>
           <div class="flex flex-wrap sm:flex-nowrap gap-2">
-            <input type="text" id="signup-address" required class="input-field flex-1" placeholder="Ex: Av. Adolfo Viana, 250, Centro, Juazeiro - BA" />
+            <input type="text" id="signup-address" required class="input-field flex-1" placeholder="Clique em Meu GPS Atual ou toque no mapa para preencher" />
             <button type="button" id="btn-signup-geocode" class="btn-secondary !py-2 !px-3 text-xs shrink-0">
               <i data-lucide="search" class="w-4 h-4 text-sky-400"></i>
               <span>Buscar Rua</span>
@@ -1215,7 +1137,7 @@
           <input type="hidden" id="signup-lng" value="-40.5028" />
           <div id="map-self-signup" class="w-full h-52 rounded-xl border border-slate-800 overflow-hidden"></div>
           <div class="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-            <span>Ao marcar sua casa, calculamos automaticamente o ponto de parada mais próximo.</span>
+            <span>Ao entrar no painel, você verá todas as rotas disponíveis e seu ponto de parada mais próximo.</span>
             <span class="font-mono text-sky-400"><span id="signup-lat-display">-9.4112</span>, <span id="signup-lng-display">-40.5028</span></span>
           </div>
         </div>

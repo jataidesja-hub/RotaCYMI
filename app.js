@@ -197,6 +197,56 @@
             [-40.5012, -9.3942]
           ],
           updatedAt: now
+        },
+        {
+          id: 'rota_02',
+          nome: 'Rota 02 — VOLTA (Petrolina PE / Juazeiro BA)',
+          turno: 'Tarde',
+          veiculoId: 'veic_102',
+          motoristaId: 'mot_02',
+          status: 'EM_ANDAMENTO',
+          distanciaKm: 6.1,
+          duracaoMin: 20,
+          pontos: [
+            {
+              id: 'pto_201',
+              nome: 'Ponto 1 — Av. Guararapes / Centro Petrolina (PE)',
+              horario: '17:30',
+              lat: -9.3942,
+              lng: -40.5012
+            },
+            {
+              id: 'pto_202',
+              nome: 'Ponto 2 — River Shopping / Petrolina (PE)',
+              horario: '17:42',
+              lat: -9.4018,
+              lng: -40.4996
+            },
+            {
+              id: 'pto_203',
+              nome: 'Ponto 3 — Orla / Av. Adolfo Viana Juazeiro (BA)',
+              horario: '17:55',
+              lat: -9.4112,
+              lng: -40.5032
+            },
+            {
+              id: 'pto_204',
+              nome: 'Ponto 4 — Rodoviária / Centro Juazeiro (BA)',
+              horario: '18:05',
+              lat: -9.4195,
+              lng: -40.5015
+            }
+          ],
+          polyline: [
+            [-40.5012, -9.3942],
+            [-40.5005, -9.3978],
+            [-40.4996, -9.4018],
+            [-40.5015, -9.4055],
+            [-40.5032, -9.4112],
+            [-40.5025, -9.4150],
+            [-40.5015, -9.4195]
+          ],
+          updatedAt: now
         }
       ],
       telemetria: [
@@ -210,6 +260,18 @@
           heading: 15,
           statusRota: 'EM_ANDAMENTO',
           proximoPontoId: 'pto_03',
+          updatedAt: now
+        },
+        {
+          rotaId: 'rota_02',
+          motoristaId: 'mot_02',
+          veiculoId: 'veic_102',
+          lat: -9.4018,
+          lng: -40.4996,
+          velocidade: 34,
+          heading: 195,
+          statusRota: 'EM_ANDAMENTO',
+          proximoPontoId: 'pto_203',
           updatedAt: now
         }
       ],
@@ -229,6 +291,7 @@
     isSatelliteMode: false,
     builderClickMode: 'navigate', // 'navigate' | 'waypoint' | 'add_stop'
     hasInitialTowerCentered: false,
+    passengerViewRouteFilter: 'ALL', // 'ALL' mostra todas as rotas juntas ou o ID de uma rota específica
 
     // Instâncias de Mapas MapLibre GL
     maps: {
@@ -249,6 +312,7 @@
       builderStops: [],
       paxPickerMarker: null,
       passengerBus: null,
+      passengerBuses: [],
       passengerSelf: null,
       passengerStops: [],
       selfHomeMarker: null,
@@ -2502,10 +2566,10 @@
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
     map.on('load', () => {
-      // Fonte da Polyline da Rota do Ônibus
+      // Fonte de Polylines de Múltiplas Rotas (FeatureCollection com cor por rota)
       map.addSource('pax-route-source', {
         type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
+        data: { type: 'FeatureCollection', features: [] }
       });
 
       map.addLayer({
@@ -2514,9 +2578,9 @@
         source: 'pax-route-source',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#0ea5e9',
-          'line-width': 4.5,
-          'line-opacity': 0.9
+          'line-color': ['coalesce', ['get', 'color'], '#0ea5e9'],
+          'line-width': ['coalesce', ['get', 'width'], 4.5],
+          'line-opacity': ['coalesce', ['get', 'opacity'], 0.9]
         }
       });
 
@@ -2548,31 +2612,162 @@
   function renderPassengerLiveView() {
     if (!state.currentUser) return;
     const user = state.db.usuarios.find((u) => u.id === state.currentUser.id) || state.currentUser;
-    const rota =
-      state.db.rotas.find((r) => r.id === user.rotaId) ||
-      state.db.rotas[0];
+    const allRoutes = state.db.rotas || [];
+    if (allRoutes.length === 0) return;
 
-    if (!rota) return;
+    const routeColors = ['#0ea5e9', '#f59e0b', '#a855f7', '#ec4899'];
 
-    const veh = state.db.veiculos.find((v) => v.id === rota.veiculoId);
-    const drv = state.db.motoristas.find((m) => m.id === rota.motoristaId);
-    const tel = state.db.telemetria.find((t) => t.rotaId === rota.id) || {
-      lat: rota.pontos[0]?.lat || DEFAULT_LAT,
-      lng: rota.pontos[0]?.lng || DEFAULT_LNG,
+    const userLat = Number(state.passengerGps.lat || user.lat || DEFAULT_LAT);
+    const userLng = Number(state.passengerGps.lng || user.lng || DEFAULT_LNG);
+
+    // Calcula para CADA rota qual é o ponto de parada mais próximo do funcionário (via Haversine)
+    let globalNearestStop = null;
+    let globalNearestRoute = null;
+    let globalMinDist = Infinity;
+
+    const routesWithAnalysis = allRoutes.map((r, rIdx) => {
+      const color = routeColors[rIdx % routeColors.length];
+      const stops = getBoardingStopsOnly(r);
+      let routeNearest = null;
+      let routeMinDist = Infinity;
+
+      const stopsWithDist = stops.map((pt, idx) => {
+        const dist = calculateHaversineMeters(userLat, userLng, Number(pt.lat), Number(pt.lng));
+        const item = { ...pt, index: idx + 1, distMeters: dist, routeId: r.id, routeName: r.nome, routeColor: color };
+        if (dist < routeMinDist) {
+          routeMinDist = dist;
+          routeNearest = item;
+        }
+        if (dist < globalMinDist) {
+          globalMinDist = dist;
+          globalNearestStop = item;
+          globalNearestRoute = r;
+        }
+        return item;
+      });
+
+      return {
+        route: r,
+        color,
+        stopsWithDist,
+        nearestStop: routeNearest
+      };
+    });
+
+    // Define quais rotas estão visíveis no mapa ('ALL' mostra todas as rotas juntas; ou apenas a rota clicada)
+    const activeFilter = state.passengerViewRouteFilter || 'ALL';
+    const visibleAnalyses =
+      activeFilter === 'ALL'
+        ? routesWithAnalysis
+        : routesWithAnalysis.filter((a) => a.route.id === activeFilter);
+
+    const primaryAnalysis =
+      visibleAnalyses.find((a) => globalNearestRoute && a.route.id === globalNearestRoute.id) ||
+      visibleAnalyses[0] ||
+      routesWithAnalysis[0];
+
+    const primaryRoute = primaryAnalysis.route;
+    const nearestStop =
+      activeFilter === 'ALL' ? globalNearestStop : primaryAnalysis.nearestStop || globalNearestStop;
+
+    // Renderiza os Cards das Rotas Disponíveis (mostrando as duas rotas e o ponto mais próximo em cada uma)
+    const cardsContainer = document.getElementById('pax-routes-cards-container');
+    if (cardsContainer) {
+      const allBtnHtml = `
+        <button type="button" data-pax-filter-route="ALL" class="p-3 rounded-xl border text-left transition ${
+          activeFilter === 'ALL'
+            ? 'bg-sky-500/15 border-sky-400 text-white shadow-md'
+            : 'bg-slate-900/75 border-slate-800 text-slate-300 hover:border-slate-700'
+        }">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold text-sky-400 uppercase">Ver Todas as Rotas (${allRoutes.length})</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">Mapa Completo</span>
+          </div>
+          <div class="text-xs font-bold text-white mt-1 truncate">
+            Mais próximo: ${globalNearestStop ? globalNearestStop.nome : 'Calculando...'}
+          </div>
+          <div class="text-[11px] text-slate-400 mt-0.5">
+            ${
+              globalNearestStop
+                ? `A ${
+                    globalNearestStop.distMeters >= 1000
+                      ? `${(globalNearestStop.distMeters / 1000).toFixed(2)} km`
+                      : `${globalNearestStop.distMeters} m`
+                  } • Previsto ${globalNearestStop.horario}`
+                : 'Exibindo todas as rotas simultaneamente'
+            }
+          </div>
+        </button>
+      `;
+
+      const routeCardsHtml = routesWithAnalysis
+        .map((a) => {
+          const isSelected = activeFilter === a.route.id;
+          const ns = a.nearestStop;
+          const distText = ns
+            ? ns.distMeters >= 1000
+              ? `${(ns.distMeters / 1000).toFixed(2)} km`
+              : `${ns.distMeters} m`
+            : '--';
+
+          return `
+            <button type="button" data-pax-filter-route="${a.route.id}" class="p-3 rounded-xl border text-left transition ${
+              isSelected
+                ? 'bg-emerald-500/15 border-emerald-400 text-white shadow-md'
+                : 'bg-slate-900/75 border-slate-800 text-slate-300 hover:border-slate-700'
+            }">
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs font-extrabold text-white truncate flex items-center gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${a.color}"></span>
+                  ${a.route.nome}
+                </span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 shrink-0">${a.route.turno || 'Rota'}</span>
+              </div>
+              <div class="text-xs text-emerald-400 font-semibold mt-1 truncate">
+                ★ Ponto mais próximo: ${ns ? ns.nome : 'Sem paradas'}
+              </div>
+              <div class="text-[11px] text-slate-400 mt-0.5 font-mono">
+                Distância: <strong class="text-white">${distText}</strong> • Horário: <strong class="text-emerald-300">${ns ? ns.horario : '--:--'}</strong>
+              </div>
+            </button>
+          `;
+        })
+        .join('');
+
+      cardsContainer.innerHTML = allBtnHtml + routeCardsHtml;
+
+      cardsContainer.querySelectorAll('[data-pax-filter-route]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.passengerViewRouteFilter = btn.getAttribute('data-pax-filter-route');
+          renderPassengerLiveView();
+        });
+      });
+    }
+
+    const veh = state.db.veiculos.find((v) => v.id === primaryRoute.veiculoId);
+    const drv = state.db.motoristas.find((m) => m.id === primaryRoute.motoristaId);
+    const tel = state.db.telemetria.find((t) => t.rotaId === primaryRoute.id) || {
+      lat: primaryRoute.pontos[0]?.lat || DEFAULT_LAT,
+      lng: primaryRoute.pontos[0]?.lng || DEFAULT_LNG,
       velocidade: 34,
       heading: 0,
-      statusRota: rota.status
+      statusRota: primaryRoute.status
     };
 
     // Cabeçalho da Rota do Passageiro
-    document.getElementById('pax-live-route-name').textContent = rota.nome;
+    document.getElementById('pax-live-route-name').textContent =
+      activeFilter === 'ALL' && allRoutes.length > 1
+        ? `Todas as Rotas Ativas (${allRoutes.map((r) => r.nome).join(' • ')})`
+        : primaryRoute.nome;
     document.getElementById('pax-live-vehicle-info').textContent = `${
       veh ? `${veh.prefixo} (${veh.placa})` : 'Ônibus Corporativo'
-    } • Motorista: ${drv ? drv.nome : '—'} • Turno ${rota.turno}`;
+    } • Motorista: ${drv ? drv.nome : '—'} • Ponto mais próximo na ${
+      nearestStop ? nearestStop.routeName : primaryRoute.nome
+    }`;
 
     const statusBadge = document.getElementById('pax-live-route-status');
-    statusBadge.textContent = rota.status === 'EM_ANDAMENTO' ? 'ÔNIBUS EM ROTA' : rota.status;
-    statusBadge.className = `status-pill ${rota.status === 'EM_ANDAMENTO' ? 'live' : 'idle'}`;
+    statusBadge.textContent = primaryRoute.status === 'EM_ANDAMENTO' ? 'ÔNIBUS EM ROTA' : primaryRoute.status;
+    statusBadge.className = `status-pill ${primaryRoute.status === 'EM_ANDAMENTO' ? 'live' : 'idle'}`;
 
     // Destaca botão de status de embarque atual ("Vou embarcar hoje" vs "Não vou utilizar hoje")
     const isGoing = user.statusEmbarque !== 'NAO_VOU';
@@ -2585,26 +2780,9 @@
       btnSkip.classList.toggle('ring-rose-400', !isGoing);
     }
 
-    // Cálculo via Fórmula de Haversine para encontrar o Ponto de Embarque Mais Próximo
-    const userLat = Number(state.passengerGps.lat || user.lat || DEFAULT_LAT);
-    const userLng = Number(state.passengerGps.lng || user.lng || DEFAULT_LNG);
-
-    let nearestStop = null;
-    let minDistanceMeters = Infinity;
-
-    const boardingStops = getBoardingStopsOnly(rota);
-    const stopsWithDist = boardingStops.map((pt, idx) => {
-      const dist = calculateHaversineMeters(userLat, userLng, Number(pt.lat), Number(pt.lng));
-      if (dist < minDistanceMeters) {
-        minDistanceMeters = dist;
-        nearestStop = { ...pt, index: idx + 1, distMeters: dist };
-      }
-      return { ...pt, index: idx + 1, distMeters: dist };
-    });
-
     // Atualiza Card do Ponto Mais Próximo
     if (nearestStop) {
-      document.getElementById('pax-nearest-name').textContent = nearestStop.nome;
+      document.getElementById('pax-nearest-name').textContent = `${nearestStop.nome} (${nearestStop.routeName})`;
       document.getElementById('pax-nearest-eta').textContent = `Previsto ${nearestStop.horario}`;
       document.getElementById('pax-nearest-distance').textContent =
         nearestStop.distMeters >= 1000
@@ -2613,12 +2791,15 @@
     }
     document.getElementById('pax-bus-speed').textContent = `${Math.round(Number(tel.velocidade || 0))} km/h`;
 
-    // Renderiza Timeline de todos os pontos da rota
+    // Junta os pontos das rotas visíveis para a Timeline e para o Mapa
+    const allVisibleStops = visibleAnalyses.flatMap((a) => a.stopsWithDist);
+
+    // Renderiza Timeline de todos os pontos das rotas visíveis
     const timelineEl = document.getElementById('pax-stops-timeline');
     if (timelineEl) {
-      timelineEl.innerHTML = stopsWithDist
+      timelineEl.innerHTML = allVisibleStops
         .map((pt) => {
-          const isNearest = nearestStop && nearestStop.id === pt.id;
+          const isNearest = nearestStop && nearestStop.id === pt.id && nearestStop.routeId === pt.routeId;
           return `
             <div class="p-3 rounded-xl border transition ${
               isNearest
@@ -2627,9 +2808,14 @@
             } flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
                 <span class="w-6 h-6 rounded-full ${
-                  isNearest ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-sky-400'
-                } text-xs font-bold font-mono flex items-center justify-center shrink-0">${pt.index}</span>
+                  isNearest ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-white'
+                } text-xs font-bold font-mono flex items-center justify-center shrink-0" style="${
+                  !isNearest ? `border: 2px solid ${pt.routeColor}` : ''
+                }">${pt.index}</span>
                 <div>
+                  <div class="text-[10px] font-bold uppercase tracking-wider" style="color:${pt.routeColor}">
+                    ${pt.routeName}
+                  </div>
                   <div class="text-xs font-bold text-white flex items-center gap-1.5">
                     <span>${pt.nome}</span>
                     ${
@@ -2638,7 +2824,9 @@
                         : ''
                     }
                   </div>
-                  <div class="text-[11px] text-slate-400">Distância: <strong class="font-mono text-slate-200">${pt.distMeters} m</strong></div>
+                  <div class="text-[11px] text-slate-400">Distância: <strong class="font-mono text-slate-200">${
+                    pt.distMeters >= 1000 ? `${(pt.distMeters / 1000).toFixed(2)} km` : `${pt.distMeters} m`
+                  }</strong></div>
                 </div>
               </div>
               <div class="font-mono text-xs font-bold ${isNearest ? 'text-emerald-400' : 'text-sky-400'}">${pt.horario}</div>
@@ -2648,16 +2836,26 @@
         .join('');
     }
 
-    // Atualiza Mapa ao Vivo do Passageiro
+    // Atualiza Mapa ao Vivo do Passageiro com todas as rotas visíveis
     const map = state.maps.passengerLive;
     if (!map || !map.getSource('pax-route-source')) return;
 
-    map.getSource('pax-route-source').setData({
+    const lineFeatures = visibleAnalyses.map((a) => ({
       type: 'Feature',
+      properties: {
+        color: a.color,
+        width: 4.5,
+        opacity: 0.92
+      },
       geometry: {
         type: 'LineString',
-        coordinates: rota.polyline || []
+        coordinates: a.route.polyline || []
       }
+    }));
+
+    map.getSource('pax-route-source').setData({
+      type: 'FeatureCollection',
+      features: lineFeatures
     });
 
     if (nearestStop) {
@@ -2677,16 +2875,16 @@
     state.markers.passengerStops.forEach((m) => m.remove());
     state.markers.passengerStops = [];
 
-    stopsWithDist.forEach((pt) => {
-      const isNearest = nearestStop && nearestStop.id === pt.id;
+    allVisibleStops.forEach((pt) => {
+      const isNearest = nearestStop && nearestStop.id === pt.id && nearestStop.routeId === pt.routeId;
       const el = document.createElement('div');
       el.className = `cymi-stop-marker ${isNearest ? 'is-nearest' : ''}`;
       el.innerHTML = `
-        <div class="cymi-stop-badge">
+        <div class="cymi-stop-badge" style="${!isNearest ? `border-color:${pt.routeColor}` : ''}">
           <span>${isNearest ? '★ MAIS PRÓXIMO' : `P${pt.index}`}</span>
           <span class="font-mono">${pt.horario}</span>
         </div>
-        <div class="cymi-stop-pin"></div>
+        <div class="cymi-stop-pin" style="${!isNearest ? `background:${pt.routeColor}` : ''}"></div>
       `;
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
@@ -2694,7 +2892,8 @@
         .setPopup(
           new maplibregl.Popup({ offset: 18 }).setHTML(`
             <div class="text-xs">
-              <div class="font-bold ${isNearest ? 'text-emerald-400' : 'text-sky-400'}">${pt.nome}</div>
+              <div class="font-bold text-[11px]" style="color:${pt.routeColor}">${pt.routeName}</div>
+              <div class="font-bold ${isNearest ? 'text-emerald-400' : 'text-white'} mt-0.5">${pt.nome}</div>
               <div class="text-slate-300 mt-1">Horário previsto: <strong class="font-mono">${pt.horario}</strong></div>
               <div class="text-slate-300">Distância de você: <strong class="font-mono">${pt.distMeters} m</strong></div>
             </div>
@@ -2714,26 +2913,45 @@
       .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML('<div class="text-xs font-bold">Sua Localização Atual</div>'))
       .addTo(map);
 
-    // Marcador do Ônibus em Tempo Real
-    if (state.markers.passengerBus) state.markers.passengerBus.remove();
-    const busEl = document.createElement('div');
-    busEl.className = 'cymi-bus-marker';
-    busEl.innerHTML = `
-      <div class="cymi-bus-pulse"></div>
-      <div class="cymi-bus-marker-inner">🚌</div>
-    `;
-    state.markers.passengerBus = new maplibregl.Marker({ element: busEl })
-      .setLngLat([Number(tel.lng), Number(tel.lat)])
-      .setPopup(
-        new maplibregl.Popup({ offset: 18 }).setHTML(`
-          <div class="text-xs">
-            <div class="font-bold text-sky-400">${veh ? veh.prefixo : 'Ônibus da Rota'}</div>
-            <div class="text-white font-semibold">${rota.nome}</div>
-            <div class="font-mono text-emerald-400 mt-1">${Math.round(Number(tel.velocidade || 0))} km/h</div>
-          </div>
-        `)
-      )
-      .addTo(map);
+    // Marcadores dos Ônibus em Tempo Real de todas as rotas visíveis
+    if (state.markers.passengerBus) {
+      state.markers.passengerBus.remove();
+      state.markers.passengerBus = null;
+    }
+    if (Array.isArray(state.markers.passengerBuses)) {
+      state.markers.passengerBuses.forEach((m) => m.remove());
+    }
+    state.markers.passengerBuses = [];
+
+    visibleAnalyses.forEach((a) => {
+      const r = a.route;
+      const rVeh = state.db.veiculos.find((v) => v.id === r.veiculoId);
+      const rTel = state.db.telemetria.find((t) => t.rotaId === r.id) || {
+        lat: r.pontos[0]?.lat || DEFAULT_LAT,
+        lng: r.pontos[0]?.lng || DEFAULT_LNG,
+        velocidade: 34
+      };
+
+      const busEl = document.createElement('div');
+      busEl.className = 'cymi-bus-marker';
+      busEl.innerHTML = `
+        <div class="cymi-bus-pulse"></div>
+        <div class="cymi-bus-marker-inner" style="border-color:${a.color}">🚌</div>
+      `;
+      const busMarker = new maplibregl.Marker({ element: busEl })
+        .setLngLat([Number(rTel.lng), Number(rTel.lat)])
+        .setPopup(
+          new maplibregl.Popup({ offset: 18 }).setHTML(`
+            <div class="text-xs">
+              <div class="font-bold" style="color:${a.color}">${rVeh ? rVeh.prefixo : 'Ônibus da Rota'}</div>
+              <div class="text-white font-semibold">${r.nome}</div>
+              <div class="font-mono text-emerald-400 mt-1">${Math.round(Number(rTel.velocidade || 0))} km/h</div>
+            </div>
+          `)
+        )
+        .addTo(map);
+      state.markers.passengerBuses.push(busMarker);
+    });
   }
 
   async function updatePassengerBoardingStatus(newStatus) {
@@ -3770,10 +3988,27 @@
     const email = document.getElementById('signup-email').value.trim().toLowerCase();
     const senha = document.getElementById('signup-password').value.trim();
     const endereco = document.getElementById('signup-address').value.trim();
-    const rotaId = document.getElementById('signup-route').value || (state.db.rotas[0]?.id || '');
-    const pontoId = document.getElementById('signup-stop').value || '';
     const lat = parseFloat(document.getElementById('signup-lat').value) || DEFAULT_LAT;
     const lng = parseFloat(document.getElementById('signup-lng').value) || DEFAULT_LNG;
+
+    // Descobre automaticamente a rota e o ponto de embarque mais próximo da casa do funcionário (via Haversine)
+    let autoRotaId = state.db.rotas[0]?.id || '';
+    let autoPontoId = '';
+    let minD = Infinity;
+
+    (state.db.rotas || []).forEach((r) => {
+      getBoardingStopsOnly(r).forEach((pt) => {
+        const d = calculateHaversineMeters(lat, lng, Number(pt.lat), Number(pt.lng));
+        if (d < minD) {
+          minD = d;
+          autoRotaId = r.id;
+          autoPontoId = pt.id;
+        }
+      });
+    });
+
+    const rotaId = document.getElementById('signup-route')?.value || autoRotaId;
+    const pontoId = document.getElementById('signup-stop')?.value || autoPontoId;
 
     const existingUser = state.db.usuarios.find(
       (u) => String(u.email).trim().toLowerCase() === email
@@ -3808,7 +4043,10 @@
     renderAdminKpiCounts();
     renderAdminPassengersList();
 
-    showToast('Cadastro concluído! Sincronizando com a planilha e abrindo sua rota...', 'success');
+    // Garante que ao entrar no painel do passageiro todas as rotas apareçam juntas com o ponto mais próximo destacado
+    state.passengerViewRouteFilter = 'ALL';
+
+    showToast('Cadastro concluído! Exibindo as rotas e seu ponto de parada mais próximo...', 'success');
 
     // Envia imediatamente para o Google Sheets
     await callGasApi({
