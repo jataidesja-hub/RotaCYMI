@@ -17,6 +17,9 @@
     GAS_URL: 'rotacymi_gas_webapp_url_v1'
   };
 
+  // URL oficial do Web App Google Apps Script do projeto RotaCYMI
+  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxS8iYzbh9ULPsZVfgttiDYTvhBCVgIYwTbDf7mBfGdt1AOUQqGOJdLicfKQVkGPmWk/exec';
+
   // Estilo Vetorial Gratuito CartoDB Dark Matter + Camada de Edifícios 3D OpenFreeMap
   const VECTOR_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -215,7 +218,7 @@
   const state = {
     db: loadLocalDb(),
     currentUser: null,
-    gasUrl: localStorage.getItem(STORAGE_KEYS.GAS_URL) || '',
+    gasUrl: localStorage.getItem(STORAGE_KEYS.GAS_URL) || DEFAULT_GAS_URL,
     activeAdminTab: 'tower',
 
     // Instâncias de Mapas MapLibre GL
