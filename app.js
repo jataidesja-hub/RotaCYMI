@@ -150,7 +150,8 @@
       rotas: [
         {
           id: 'rota_01',
-          nome: 'Rota 01 — Juazeiro (BA) / Petrolina (PE) / Sede CYMI',
+          nome: 'Rota 01 — IDA (Juazeiro BA / Petrolina PE)',
+          tipoRota: 'IDA',
           turno: 'Manhã',
           veiculoId: 'veic_101',
           motoristaId: 'mot_01',
@@ -200,11 +201,12 @@
         },
         {
           id: 'rota_02',
-          nome: 'Rota 02 — VOLTA (Petrolina PE / Juazeiro BA)',
+          nome: 'Rota 01 — VOLTA (Petrolina PE / Juazeiro BA)',
+          tipoRota: 'VOLTA',
           turno: 'Tarde',
-          veiculoId: 'veic_102',
-          motoristaId: 'mot_02',
-          status: 'EM_ANDAMENTO',
+          veiculoId: 'veic_101',
+          motoristaId: 'mot_01',
+          status: 'PARADA',
           distanciaKm: 6.1,
           duracaoMin: 20,
           pontos: [
@@ -264,14 +266,14 @@
         },
         {
           rotaId: 'rota_02',
-          motoristaId: 'mot_02',
-          veiculoId: 'veic_102',
-          lat: -9.4018,
-          lng: -40.4996,
-          velocidade: 34,
+          motoristaId: 'mot_01',
+          veiculoId: 'veic_101',
+          lat: -9.3942,
+          lng: -40.5012,
+          velocidade: 0,
           heading: 195,
-          statusRota: 'EM_ANDAMENTO',
-          proximoPontoId: 'pto_203',
+          statusRota: 'PARADA',
+          proximoPontoId: 'pto_201',
           updatedAt: now
         }
       ],
@@ -412,12 +414,24 @@
     }
 
     if (Array.isArray(dbObj.rotas)) {
+      const seenOpenVehicle = new Set();
       dbObj.rotas.forEach((r) => {
         if (Array.isArray(r.pontos) && r.pontos.length > 0 && isLegacySaoPauloCoord(r.pontos[0].lat, r.pontos[0].lng)) {
           const seedRoute = createInitialSeedData().rotas[0];
           r.nome = seedRoute.nome;
           r.pontos = seedRoute.pontos;
           r.polyline = seedRoute.polyline;
+        }
+        if (!r.tipoRota) {
+          r.tipoRota = String(r.nome || '').toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA';
+        }
+        // Garante que o mesmo ônibus não tenha IDA e VOLTA abertas simultaneamente por cache antigo
+        if (r.status === 'EM_ANDAMENTO' && r.veiculoId) {
+          if (seenOpenVehicle.has(r.veiculoId)) {
+            r.status = 'PARADA';
+          } else {
+            seenOpenVehicle.add(r.veiculoId);
+          }
         }
       });
     }
@@ -1421,7 +1435,7 @@
       elUpdated.textContent = new Date().toLocaleTimeString('pt-BR');
     }
 
-    // Renderiza lista lateral de rotas na Torre
+    // Renderiza lista lateral de rotas na Torre (com botão rápido para Abrir/Fechar rota IDA ou VOLTA)
     const listContainer = document.getElementById('tower-routes-list');
     if (listContainer) {
       listContainer.innerHTML = routes
@@ -1433,18 +1447,40 @@
           const paxGoing = paxInRoute.filter((p) => p.statusEmbarque !== 'NAO_VOU').length;
           const speed = tel ? Math.round(Number(tel.velocidade || 0)) : 0;
           const isLive = r.status === 'EM_ANDAMENTO';
+          const sentido =
+            r.tipoRota ||
+            (String(r.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
 
           return `
-            <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-sky-500/40 transition cursor-pointer" data-focus-route="${r.id}">
+            <div class="p-3.5 rounded-xl bg-slate-900/80 border ${
+              isLive ? 'border-emerald-500/40' : 'border-slate-800'
+            } hover:border-sky-500/40 transition cursor-pointer" data-focus-route="${r.id}">
               <div class="flex items-center justify-between gap-2">
-                <span class="status-pill ${isLive ? 'live' : 'idle'}">${isLive ? 'EM ROTA' : r.status || 'PARADA'}</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="status-pill ${isLive ? 'live' : 'idle'}">${
+                    isLive ? 'ROTA ABERTA' : 'FECHADA'
+                  }</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-extrabold font-mono ${
+                    sentido === 'VOLTA'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                  }">${sentido}</span>
+                </div>
                 <span class="font-mono-num text-xs font-bold text-sky-400">${speed} km/h</span>
               </div>
               <h4 class="text-sm font-bold text-white mt-2">${r.nome}</h4>
-              <p class="text-xs text-slate-400 mt-0.5">${veh ? `${veh.prefixo} (${veh.placa})` : 'Sem veículo'} • ${drv ? drv.nome : 'Sem motorista'}</p>
+              <p class="text-xs text-slate-400 mt-0.5">${
+                veh ? `${veh.prefixo} (${veh.placa})` : 'Sem veículo'
+              } • ${drv ? drv.nome : 'Sem motorista'}</p>
               <div class="flex items-center justify-between text-[11px] text-slate-300 mt-3 pt-2 border-t border-slate-800/80">
-                <span>Turno: <strong>${r.turno}</strong></span>
-                <span class="text-emerald-400 font-semibold">${paxGoing}/${paxInRoute.length} embarcando hoje</span>
+                <span>Turno: <strong>${r.turno}</strong> (${paxGoing} emb.)</span>
+                <button type="button" data-toggle-open-route="${r.id}" class="px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                  isLive
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                }">
+                  ${isLive ? 'Fechar Rota' : 'Abrir Rota para Usuários'}
+                </button>
               </div>
             </div>
           `;
@@ -1452,7 +1488,8 @@
         .join('');
 
       listContainer.querySelectorAll('[data-focus-route]').forEach((card) => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (ev) => {
+          if (ev.target.closest('[data-toggle-open-route]')) return;
           const rId = card.getAttribute('data-focus-route');
           const rObj = state.db.rotas.find((r) => r.id === rId);
           if (rObj && Array.isArray(rObj.pontos) && rObj.pontos.length > 0 && state.maps.tower) {
@@ -1460,6 +1497,14 @@
             rObj.pontos.forEach((pt) => bounds.extend([Number(pt.lng), Number(pt.lat)]));
             state.maps.tower.fitBounds(bounds, { padding: 65, maxZoom: 14.8, duration: 850 });
           }
+        });
+      });
+
+      listContainer.querySelectorAll('[data-toggle-open-route]').forEach((btn) => {
+        btn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const rId = btn.getAttribute('data-toggle-open-route');
+          await toggleRouteOpenState(rId);
         });
       });
     }
@@ -1962,6 +2007,11 @@
     document.getElementById('route-form-title').textContent = `Editando: ${r.nome}`;
     document.getElementById('route-id').value = r.id;
     document.getElementById('route-name').value = r.nome;
+    const dirEl = document.getElementById('route-direction');
+    if (dirEl) {
+      dirEl.value =
+        r.tipoRota || (String(r.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
+    }
     document.getElementById('route-shift').value = r.turno || 'Manhã';
     document.getElementById('route-vehicle').value = r.veiculoId || '';
     document.getElementById('route-driver').value = r.motoristaId || '';
@@ -1993,6 +2043,8 @@
     document.getElementById('route-form-title').textContent = 'Nova Rota Corporativa';
     document.getElementById('route-id').value = '';
     document.getElementById('route-name').value = '';
+    const dirEl = document.getElementById('route-direction');
+    if (dirEl) dirEl.value = 'IDA';
     state.routeDraft = {
       id: '',
       pontos: [],
@@ -2014,14 +2066,20 @@
 
     const routeId = document.getElementById('route-id').value || `rota_${Date.now()}`;
     const existingRoute = state.db.rotas.find((r) => r.id === routeId);
+    const tipoRota =
+      document.getElementById('route-direction')?.value ||
+      (String(document.getElementById('route-name').value).toUpperCase().includes('VOLTA')
+        ? 'VOLTA'
+        : 'IDA');
 
     const routeObj = {
       id: routeId,
       nome: document.getElementById('route-name').value.trim(),
+      tipoRota,
       turno: document.getElementById('route-shift').value,
       veiculoId: document.getElementById('route-vehicle').value,
       motoristaId: document.getElementById('route-driver').value,
-      status: existingRoute ? existingRoute.status : 'EM_ANDAMENTO',
+      status: existingRoute ? existingRoute.status : 'PARADA',
       pontos: state.routeDraft.pontos,
       polyline: state.routeDraft.polyline,
       distanciaKm: state.routeDraft.distanciaKm,
@@ -2047,7 +2105,7 @@
         lng: routeObj.pontos[0].lng,
         velocidade: 0,
         heading: 0,
-        statusRota: 'EM_ANDAMENTO',
+        statusRota: routeObj.status,
         proximoPontoId: routeObj.pontos[0].id,
         updatedAt: new Date().toISOString()
       });
@@ -2056,13 +2114,107 @@
     saveLocalDb();
     populateAdminSelectDropdowns();
     renderSavedRoutesListAdmin();
-    showToast(`Rota "${routeObj.nome}" atualizada e salva com sucesso!`, 'success');
+    renderTowerMapAndSidebar();
+    showToast(`Rota "${routeObj.nome}" (${tipoRota}) salva com sucesso!`, 'success');
 
     await callGasApi({
       action: 'upsertEntity',
       sheet: 'Rotas',
       record: routeObj
     });
+  }
+
+  /**
+   * Abre ou Fecha uma rota (IDA ou VOLTA).
+   * Regra: quando um ônibus abre a rota de IDA, a rota de VOLTA desse mesmo ônibus é fechada automaticamente (e vice-versa),
+   * para que os passageiros visualizem somente a rota que estiver aberta no momento!
+   */
+  async function toggleRouteOpenState(routeId, forceState) {
+    const targetRoute = state.db.rotas.find((r) => r.id === routeId);
+    if (!targetRoute) return;
+
+    const currentlyOpen = targetRoute.status === 'EM_ANDAMENTO';
+    const shouldOpen = typeof forceState === 'boolean' ? forceState : !currentlyOpen;
+    const now = new Date().toISOString();
+
+    const changedRoutes = [];
+
+    if (shouldOpen) {
+      // Se estiver abrindo esta rota, fecha a outra rota (IDA/VOLTA) que pertença ao mesmo ônibus ou motorista
+      state.db.rotas.forEach((r) => {
+        if (
+          r.id !== targetRoute.id &&
+          r.status === 'EM_ANDAMENTO' &&
+          ((targetRoute.veiculoId && r.veiculoId === targetRoute.veiculoId) ||
+            (targetRoute.motoristaId && r.motoristaId === targetRoute.motoristaId))
+        ) {
+          r.status = 'PARADA';
+          r.updatedAt = now;
+          changedRoutes.push(r);
+          const telOther = state.db.telemetria.find((t) => t.rotaId === r.id);
+          if (telOther) {
+            telOther.statusRota = 'PARADA';
+            telOther.velocidade = 0;
+          }
+        }
+      });
+
+      targetRoute.status = 'EM_ANDAMENTO';
+      targetRoute.updatedAt = now;
+      changedRoutes.push(targetRoute);
+
+      let tel = state.db.telemetria.find((t) => t.rotaId === targetRoute.id);
+      if (!tel && targetRoute.pontos && targetRoute.pontos.length > 0) {
+        tel = {
+          rotaId: targetRoute.id,
+          motoristaId: targetRoute.motoristaId,
+          veiculoId: targetRoute.veiculoId,
+          lat: targetRoute.pontos[0].lat,
+          lng: targetRoute.pontos[0].lng,
+          velocidade: 35,
+          heading: 0,
+          statusRota: 'EM_ANDAMENTO',
+          proximoPontoId: targetRoute.pontos[0].id,
+          updatedAt: now
+        };
+        state.db.telemetria.push(tel);
+      } else if (tel) {
+        tel.statusRota = 'EM_ANDAMENTO';
+        tel.updatedAt = now;
+      }
+
+      showToast(
+        `Rota "${targetRoute.nome}" ABERTA! Os funcionários agora visualizam esta rota no painel.`,
+        'success'
+      );
+    } else {
+      targetRoute.status = 'PARADA';
+      targetRoute.updatedAt = now;
+      changedRoutes.push(targetRoute);
+
+      const tel = state.db.telemetria.find((t) => t.rotaId === targetRoute.id);
+      if (tel) {
+        tel.statusRota = 'PARADA';
+        tel.velocidade = 0;
+        tel.updatedAt = now;
+      }
+
+      showToast(`Rota "${targetRoute.nome}" FECHADA.`, 'info');
+    }
+
+    saveLocalDb();
+    renderAdminKpiCounts();
+    renderTowerMapAndSidebar();
+    renderSavedRoutesListAdmin();
+    refreshActiveViews();
+
+    for (const r of changedRoutes) {
+      await callGasApi({
+        action: 'upsertEntity',
+        sheet: 'Rotas',
+        record: r
+      });
+    }
   }
 
   function renderSavedRoutesListAdmin() {
@@ -2075,15 +2227,36 @@
         const drv = state.db.motoristas.find((m) => m.id === r.motoristaId);
         const stopsCount = getBoardingStopsOnly(r).length;
         const waypointsCount = (r.pontos || []).filter((p) => p.tipo === 'WAYPOINT').length;
+        const isLive = r.status === 'EM_ANDAMENTO';
+        const sentido =
+          r.tipoRota || (String(r.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
+
         return `
-          <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
+          <div class="p-3 rounded-xl bg-slate-900/80 border ${
+            isLive ? 'border-emerald-500/40' : 'border-slate-800'
+          } flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <div class="text-xs font-bold text-white">${r.nome}</div>
-              <div class="text-[11px] text-slate-400">
-                ${r.turno} • ${stopsCount} paradas${waypointsCount > 0 ? ` (+${waypointsCount} desvios)` : ''} • ${r.distanciaKm || 0} km • ${veh ? veh.prefixo : ''} (${drv ? drv.nome : ''})
+              <div class="flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold font-mono ${
+                  sentido === 'VOLTA'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                }">${sentido}</span>
+                <span class="status-pill ${isLive ? 'live' : 'idle'}">${
+                  isLive ? 'ABERTA' : 'FECHADA'
+                }</span>
+                <span class="text-xs font-bold text-white">${r.nome}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 mt-1">
+                ${r.turno} • ${stopsCount} paradas${
+                  waypointsCount > 0 ? ` (+${waypointsCount} desvios)` : ''
+                } • ${r.distanciaKm || 0} km • ${veh ? veh.prefixo : ''} (${drv ? drv.nome : ''})
               </div>
             </div>
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" data-builder-toggle-open="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs ${
+                isLive ? 'text-rose-300 border-rose-500/40' : 'text-emerald-300 border-emerald-500/40'
+              }">${isLive ? 'Fechar' : 'Abrir Rota'}</button>
               <button type="button" data-edit-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs">Editar</button>
               <button type="button" data-del-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-rose-400">Excluir</button>
             </div>
@@ -2091,6 +2264,12 @@
         `;
       })
       .join('');
+
+    container.querySelectorAll('[data-builder-toggle-open]').forEach((btn) => {
+      btn.addEventListener('click', () =>
+        toggleRouteOpenState(btn.getAttribute('data-builder-toggle-open'))
+      );
+    });
 
     container.querySelectorAll('[data-edit-route]').forEach((btn) => {
       btn.addEventListener('click', () => loadRouteIntoBuilder(btn.getAttribute('data-edit-route')));
@@ -2613,27 +2792,114 @@
     if (!state.currentUser) return;
     const user = state.db.usuarios.find((u) => u.id === state.currentUser.id) || state.currentUser;
     const allRoutes = state.db.rotas || [];
-    if (allRoutes.length === 0) return;
 
-    const routeColors = ['#0ea5e9', '#f59e0b', '#a855f7', '#ec4899'];
+    // Regra de Negócio: Os usuários (passageiros) SÓ visualizam a rota que estiver ABERTA no momento (IDA ou VOLTA)
+    const openRoutes = allRoutes.filter((r) => r.status === 'EM_ANDAMENTO');
 
     const userLat = Number(state.passengerGps.lat || user.lat || DEFAULT_LAT);
     const userLng = Number(state.passengerGps.lng || user.lng || DEFAULT_LNG);
 
-    // Calcula para CADA rota qual é o ponto de parada mais próximo do funcionário (via Haversine)
+    // Destaca botão de status de embarque atual ("Vou embarcar hoje" vs "Não vou utilizar hoje")
+    const isGoing = user.statusEmbarque !== 'NAO_VOU';
+    const btnGoing = document.getElementById('btn-pax-status-going');
+    const btnSkip = document.getElementById('btn-pax-status-skip');
+    if (btnGoing && btnSkip) {
+      btnGoing.classList.toggle('ring-2', isGoing);
+      btnGoing.classList.toggle('ring-emerald-300', isGoing);
+      btnSkip.classList.toggle('ring-2', !isGoing);
+      btnSkip.classList.toggle('ring-rose-400', !isGoing);
+    }
+
+    const cardsContainer = document.getElementById('pax-routes-cards-container');
+    const timelineEl = document.getElementById('pax-stops-timeline');
+    const map = state.maps.passengerLive;
+
+    // Caso nenhuma rota (nem IDA nem VOLTA) esteja aberta no momento
+    if (openRoutes.length === 0) {
+      document.getElementById('pax-live-route-name').textContent = 'Nenhuma Rota Aberta no Momento';
+      document.getElementById('pax-live-vehicle-info').textContent =
+        'Assim que o motorista abrir a rota de IDA ou VOLTA, o trajeto e seu ponto mais próximo aparecerão automaticamente aqui.';
+      const statusBadge = document.getElementById('pax-live-route-status');
+      statusBadge.textContent = 'AGUARDANDO ABERTURA (IDA / VOLTA)';
+      statusBadge.className = 'status-pill idle';
+
+      document.getElementById('pax-nearest-name').textContent = 'Aguardando rota abrir...';
+      document.getElementById('pax-nearest-eta').textContent = 'Previsto --:--';
+      document.getElementById('pax-nearest-distance').textContent = '-- m';
+      document.getElementById('pax-bus-speed').textContent = '0 km/h';
+
+      if (cardsContainer) {
+        cardsContainer.innerHTML = `
+          <div class="col-span-full p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-xs font-extrabold text-amber-300 uppercase">Ônibus fora de operação no momento</div>
+              <div class="text-xs text-slate-300 mt-0.5">
+                Você visualizará automaticamente a rota de <strong>IDA</strong> ou <strong>VOLTA</strong> assim que ela for aberta pelo motorista.
+              </div>
+            </div>
+            <span class="status-pill idle shrink-0">FECHADA</span>
+          </div>
+        `;
+      }
+
+      if (timelineEl) {
+        timelineEl.innerHTML = `
+          <div class="p-4 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-slate-400 text-center">
+            Nenhuma rota aberta no momento. Aguarde o início da viagem (Ida ou Volta).
+          </div>
+        `;
+      }
+
+      if (map && map.getSource('pax-route-source')) {
+        map.getSource('pax-route-source').setData({ type: 'FeatureCollection', features: [] });
+        map.getSource('pax-nearest-dotted-source')?.setData({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [] }
+        });
+        state.markers.passengerStops.forEach((m) => m.remove());
+        state.markers.passengerStops = [];
+        if (Array.isArray(state.markers.passengerBuses)) {
+          state.markers.passengerBuses.forEach((m) => m.remove());
+        }
+        state.markers.passengerBuses = [];
+
+        if (state.markers.passengerSelf) state.markers.passengerSelf.remove();
+        const selfEl = document.createElement('div');
+        selfEl.className = 'cymi-user-marker';
+        selfEl.innerHTML = user.foto ? `<img src="${user.foto}" alt="Eu" />` : '<span>EU</span>';
+        state.markers.passengerSelf = new maplibregl.Marker({ element: selfEl })
+          .setLngLat([userLng, userLat])
+          .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML('<div class="text-xs font-bold">Sua Localização Atual</div>'))
+          .addTo(map);
+      }
+      return;
+    }
+
+    const routeColors = ['#0ea5e9', '#f59e0b', '#a855f7', '#ec4899'];
+
+    // Calcula para CADA rota ABERTA qual é o ponto de parada mais próximo do funcionário (via Haversine)
     let globalNearestStop = null;
     let globalNearestRoute = null;
     let globalMinDist = Infinity;
 
-    const routesWithAnalysis = allRoutes.map((r, rIdx) => {
-      const color = routeColors[rIdx % routeColors.length];
+    const routesWithAnalysis = openRoutes.map((r, rIdx) => {
+      const sentido = r.tipoRota || (String(r.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
+      const color = sentido === 'VOLTA' ? '#f59e0b' : routeColors[rIdx % routeColors.length];
       const stops = getBoardingStopsOnly(r);
       let routeNearest = null;
       let routeMinDist = Infinity;
 
       const stopsWithDist = stops.map((pt, idx) => {
         const dist = calculateHaversineMeters(userLat, userLng, Number(pt.lat), Number(pt.lng));
-        const item = { ...pt, index: idx + 1, distMeters: dist, routeId: r.id, routeName: r.nome, routeColor: color };
+        const item = {
+          ...pt,
+          index: idx + 1,
+          distMeters: dist,
+          routeId: r.id,
+          routeName: r.nome,
+          routeSentido: sentido,
+          routeColor: color
+        };
         if (dist < routeMinDist) {
           routeMinDist = dist;
           routeNearest = item;
@@ -2648,13 +2914,22 @@
 
       return {
         route: r,
+        sentido,
         color,
         stopsWithDist,
         nearestStop: routeNearest
       };
     });
 
-    // Define quais rotas estão visíveis no mapa ('ALL' mostra todas as rotas juntas; ou apenas a rota clicada)
+    // Se o filtro anterior apontava para uma rota que foi fechada, volta para 'ALL'
+    if (
+      state.passengerViewRouteFilter &&
+      state.passengerViewRouteFilter !== 'ALL' &&
+      !openRoutes.some((r) => r.id === state.passengerViewRouteFilter)
+    ) {
+      state.passengerViewRouteFilter = 'ALL';
+    }
+
     const activeFilter = state.passengerViewRouteFilter || 'ALL';
     const visibleAnalyses =
       activeFilter === 'ALL'
@@ -2667,21 +2942,23 @@
       routesWithAnalysis[0];
 
     const primaryRoute = primaryAnalysis.route;
+    const primarySentido = primaryAnalysis.sentido;
     const nearestStop =
       activeFilter === 'ALL' ? globalNearestStop : primaryAnalysis.nearestStop || globalNearestStop;
 
-    // Renderiza os Cards das Rotas Disponíveis (mostrando as duas rotas e o ponto mais próximo em cada uma)
-    const cardsContainer = document.getElementById('pax-routes-cards-container');
+    // Renderiza os Cards apenas da(s) Rota(s) ABERTA(S) no momento
     if (cardsContainer) {
-      const allBtnHtml = `
+      const allBtnHtml =
+        openRoutes.length > 1
+          ? `
         <button type="button" data-pax-filter-route="ALL" class="p-3 rounded-xl border text-left transition ${
           activeFilter === 'ALL'
             ? 'bg-sky-500/15 border-sky-400 text-white shadow-md'
             : 'bg-slate-900/75 border-slate-800 text-slate-300 hover:border-slate-700'
         }">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-extrabold text-sky-400 uppercase">Ver Todas as Rotas (${allRoutes.length})</span>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">Mapa Completo</span>
+            <span class="text-xs font-extrabold text-sky-400 uppercase">Rotas Abertas (${openRoutes.length})</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">Ao Vivo</span>
           </div>
           <div class="text-xs font-bold text-white mt-1 truncate">
             Mais próximo: ${globalNearestStop ? globalNearestStop.nome : 'Calculando...'}
@@ -2694,15 +2971,16 @@
                       ? `${(globalNearestStop.distMeters / 1000).toFixed(2)} km`
                       : `${globalNearestStop.distMeters} m`
                   } • Previsto ${globalNearestStop.horario}`
-                : 'Exibindo todas as rotas simultaneamente'
+                : 'Exibindo rotas abertas no momento'
             }
           </div>
         </button>
-      `;
+      `
+          : '';
 
       const routeCardsHtml = routesWithAnalysis
         .map((a) => {
-          const isSelected = activeFilter === a.route.id;
+          const isSelected = openRoutes.length === 1 || activeFilter === a.route.id;
           const ns = a.nearestStop;
           const distText = ns
             ? ns.distMeters >= 1000
@@ -2711,23 +2989,29 @@
             : '--';
 
           return `
-            <button type="button" data-pax-filter-route="${a.route.id}" class="p-3 rounded-xl border text-left transition ${
+            <button type="button" data-pax-filter-route="${a.route.id}" class="${
+              openRoutes.length === 1 ? 'col-span-full' : ''
+            } p-3 rounded-xl border text-left transition ${
               isSelected
                 ? 'bg-emerald-500/15 border-emerald-400 text-white shadow-md'
                 : 'bg-slate-900/75 border-slate-800 text-slate-300 hover:border-slate-700'
             }">
-              <div class="flex items-center justify-between gap-1">
+              <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-extrabold text-white truncate flex items-center gap-1.5">
-                  <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${a.color}"></span>
-                  ${a.route.nome}
+                  <span class="px-2 py-0.5 rounded text-[10px] font-extrabold font-mono ${
+                    a.sentido === 'VOLTA'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                  }">${a.sentido}</span>
+                  <span>${a.route.nome}</span>
                 </span>
-                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 shrink-0">${a.route.turno || 'Rota'}</span>
+                <span class="status-pill live !text-[10px]">ROTA ABERTA</span>
               </div>
-              <div class="text-xs text-emerald-400 font-semibold mt-1 truncate">
-                ★ Ponto mais próximo: ${ns ? ns.nome : 'Sem paradas'}
+              <div class="text-xs text-emerald-400 font-semibold mt-1.5 truncate">
+                ★ Ponto de embarque mais próximo: ${ns ? ns.nome : 'Sem paradas'}
               </div>
-              <div class="text-[11px] text-slate-400 mt-0.5 font-mono">
-                Distância: <strong class="text-white">${distText}</strong> • Horário: <strong class="text-emerald-300">${ns ? ns.horario : '--:--'}</strong>
+              <div class="text-[11px] text-slate-300 mt-0.5 font-mono">
+                Distância: <strong class="text-white">${distText}</strong> • Horário previsto: <strong class="text-emerald-300">${ns ? ns.horario : '--:--'}</strong>
               </div>
             </button>
           `;
@@ -2754,36 +3038,22 @@
       statusRota: primaryRoute.status
     };
 
-    // Cabeçalho da Rota do Passageiro
-    document.getElementById('pax-live-route-name').textContent =
-      activeFilter === 'ALL' && allRoutes.length > 1
-        ? `Todas as Rotas Ativas (${allRoutes.map((r) => r.nome).join(' • ')})`
-        : primaryRoute.nome;
+    // Cabeçalho da Rota Aberta do Passageiro
+    document.getElementById('pax-live-route-name').textContent = `[${primarySentido}] ${primaryRoute.nome}`;
     document.getElementById('pax-live-vehicle-info').textContent = `${
       veh ? `${veh.prefixo} (${veh.placa})` : 'Ônibus Corporativo'
-    } • Motorista: ${drv ? drv.nome : '—'} • Ponto mais próximo na ${
-      nearestStop ? nearestStop.routeName : primaryRoute.nome
+    } • Motorista: ${drv ? drv.nome : '—'} • Ponto mais próximo: ${
+      nearestStop ? nearestStop.nome : '—'
     }`;
 
     const statusBadge = document.getElementById('pax-live-route-status');
-    statusBadge.textContent = primaryRoute.status === 'EM_ANDAMENTO' ? 'ÔNIBUS EM ROTA' : primaryRoute.status;
-    statusBadge.className = `status-pill ${primaryRoute.status === 'EM_ANDAMENTO' ? 'live' : 'idle'}`;
-
-    // Destaca botão de status de embarque atual ("Vou embarcar hoje" vs "Não vou utilizar hoje")
-    const isGoing = user.statusEmbarque !== 'NAO_VOU';
-    const btnGoing = document.getElementById('btn-pax-status-going');
-    const btnSkip = document.getElementById('btn-pax-status-skip');
-    if (btnGoing && btnSkip) {
-      btnGoing.classList.toggle('ring-2', isGoing);
-      btnGoing.classList.toggle('ring-emerald-300', isGoing);
-      btnSkip.classList.toggle('ring-2', !isGoing);
-      btnSkip.classList.toggle('ring-rose-400', !isGoing);
-    }
+    statusBadge.textContent = `ROTA DE ${primarySentido} ABERTA`;
+    statusBadge.className = 'status-pill live';
 
     // Atualiza Card do Ponto Mais Próximo
     if (nearestStop) {
-      document.getElementById('pax-nearest-name').textContent = `${nearestStop.nome} (${nearestStop.routeName})`;
-      document.getElementById('pax-nearest-eta').textContent = `Previsto ${nearestStop.horario}`;
+      document.getElementById('pax-nearest-name').textContent = `${nearestStop.nome}`;
+      document.getElementById('pax-nearest-eta').textContent = `Previsto ${nearestStop.horario} (${nearestStop.routeSentido})`;
       document.getElementById('pax-nearest-distance').textContent =
         nearestStop.distMeters >= 1000
           ? `${(nearestStop.distMeters / 1000).toFixed(2)} km`
@@ -2791,11 +3061,10 @@
     }
     document.getElementById('pax-bus-speed').textContent = `${Math.round(Number(tel.velocidade || 0))} km/h`;
 
-    // Junta os pontos das rotas visíveis para a Timeline e para o Mapa
+    // Junta os pontos das rotas abertas visíveis para a Timeline e para o Mapa
     const allVisibleStops = visibleAnalyses.flatMap((a) => a.stopsWithDist);
 
-    // Renderiza Timeline de todos os pontos das rotas visíveis
-    const timelineEl = document.getElementById('pax-stops-timeline');
+    // Renderiza Timeline de todos os pontos da rota aberta
     if (timelineEl) {
       timelineEl.innerHTML = allVisibleStops
         .map((pt) => {
@@ -2814,7 +3083,7 @@
                 }">${pt.index}</span>
                 <div>
                   <div class="text-[10px] font-bold uppercase tracking-wider" style="color:${pt.routeColor}">
-                    ${pt.routeName}
+                    [${pt.routeSentido}] ${pt.routeName}
                   </div>
                   <div class="text-xs font-bold text-white flex items-center gap-1.5">
                     <span>${pt.nome}</span>
@@ -2836,8 +3105,7 @@
         .join('');
     }
 
-    // Atualiza Mapa ao Vivo do Passageiro com todas as rotas visíveis
-    const map = state.maps.passengerLive;
+    // Atualiza Mapa ao Vivo do Passageiro somente com a(s) rota(s) ABERTA(S)
     if (!map || !map.getSource('pax-route-source')) return;
 
     const lineFeatures = visibleAnalyses.map((a) => ({
@@ -2892,7 +3160,7 @@
         .setPopup(
           new maplibregl.Popup({ offset: 18 }).setHTML(`
             <div class="text-xs">
-              <div class="font-bold text-[11px]" style="color:${pt.routeColor}">${pt.routeName}</div>
+              <div class="font-bold text-[11px]" style="color:${pt.routeColor}">[${pt.routeSentido}] ${pt.routeName}</div>
               <div class="font-bold ${isNearest ? 'text-emerald-400' : 'text-white'} mt-0.5">${pt.nome}</div>
               <div class="text-slate-300 mt-1">Horário previsto: <strong class="font-mono">${pt.horario}</strong></div>
               <div class="text-slate-300">Distância de você: <strong class="font-mono">${pt.distMeters} m</strong></div>
@@ -2913,7 +3181,7 @@
       .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML('<div class="text-xs font-bold">Sua Localização Atual</div>'))
       .addTo(map);
 
-    // Marcadores dos Ônibus em Tempo Real de todas as rotas visíveis
+    // Marcadores dos Ônibus em Tempo Real apenas da(s) rota(s) ABERTA(S)
     if (state.markers.passengerBus) {
       state.markers.passengerBus.remove();
       state.markers.passengerBus = null;
@@ -2943,7 +3211,7 @@
         .setPopup(
           new maplibregl.Popup({ offset: 18 }).setHTML(`
             <div class="text-xs">
-              <div class="font-bold" style="color:${a.color}">${rVeh ? rVeh.prefixo : 'Ônibus da Rota'}</div>
+              <div class="font-bold" style="color:${a.color}">${rVeh ? rVeh.prefixo : 'Ônibus da Rota'} (${a.sentido})</div>
               <div class="text-white font-semibold">${r.nome}</div>
               <div class="font-mono text-emerald-400 mt-1">${Math.round(Number(rTel.velocidade || 0))} km/h</div>
             </div>
@@ -3099,10 +3367,15 @@
    * 9. MÓDULO 3: TELA DO MOTORISTA (COCKPIT 3D PITCH 65 + WAKE LOCK + TELEMETRIA)
    * ========================================================================== */
   async function initDriverModule() {
-    // Localiza a rota vinculada ao motorista logado
+    // Localiza as rotas vinculadas ao motorista logado (ou todas as rotas disponíveis)
     const driverId = state.currentUser.id;
+    const driverRoutes = state.db.rotas.filter((r) => r.motoristaId === driverId);
+    const candidateRoutes = driverRoutes.length > 0 ? driverRoutes : state.db.rotas;
+
+    // Prioriza a rota que já estiver ABERTA (EM_ANDAMENTO)
     const assignedRoute =
-      state.db.rotas.find((r) => r.motoristaId === driverId) ||
+      candidateRoutes.find((r) => r.status === 'EM_ANDAMENTO') ||
+      candidateRoutes[0] ||
       state.db.rotas[0];
 
     if (assignedRoute) {
@@ -3181,13 +3454,71 @@
       state.db.rotas[0];
     if (!rota) return;
 
+    const sentido =
+      rota.tipoRota || (String(rota.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
+    const isRouteOpen = rota.status === 'EM_ANDAMENTO';
+
+    // Popula o seletor de rota (IDA / VOLTA) do motorista
+    const selectEl = document.getElementById('driver-select-route');
+    if (selectEl) {
+      selectEl.innerHTML = (state.db.rotas || [])
+        .map((r) => {
+          const rSentido =
+            r.tipoRota || (String(r.nome).toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA');
+          const rOpen = r.status === 'EM_ANDAMENTO' ? '🟢 ABERTA' : '⚪ FECHADA';
+          return `<option value="${r.id}">[${rSentido}] ${r.nome} — ${rOpen}</option>`;
+        })
+        .join('');
+      selectEl.value = rota.id;
+    }
+
+    // Sincroniza botões ABRIR / INICIAR ROTA vs FECHAR / FINALIZAR ROTA com o status da rota selecionada
+    const btnStart = document.getElementById('btn-driver-start-route');
+    const btnFinish = document.getElementById('btn-driver-finish-route');
+    const hudStatus = document.getElementById('driver-hud-status');
+    if (isRouteOpen) {
+      btnStart?.classList.add('hidden');
+      btnFinish?.classList.remove('hidden');
+      if (hudStatus) {
+        hudStatus.className = 'status-pill live';
+        hudStatus.textContent = `ROTA DE ${sentido} ABERTA (VISÍVEL P/ USUÁRIOS)`;
+      }
+    } else {
+      btnStart?.classList.remove('hidden');
+      btnFinish?.classList.add('hidden');
+      if (hudStatus) {
+        hudStatus.className = 'status-pill idle';
+        hudStatus.textContent = `ROTA DE ${sentido} FECHADA`;
+      }
+    }
+
     const veh = state.db.veiculos.find((v) => v.id === rota.veiculoId);
-    const passengers = state.db.usuarios.filter(
-      (u) => u.perfil === 'PASSAGEIRO' && u.rotaId === rota.id
-    );
+    const boardingStops = getBoardingStopsOnly(rota);
+
+    // Vincula todos os passageiros ao ponto mais próximo desta rota (IDA ou VOLTA)
+    const allPassengers = state.db.usuarios.filter((u) => u.perfil === 'PASSAGEIRO');
+    const passengers = allPassengers.map((p) => {
+      let nearestStopObj = boardingStops.find((pt) => pt.id === p.pontoId) || boardingStops[0] || null;
+      let minD = Infinity;
+      if (p.lat && p.lng && boardingStops.length > 0) {
+        boardingStops.forEach((pt) => {
+          const d = calculateHaversineMeters(Number(p.lat), Number(p.lng), Number(pt.lat), Number(pt.lng));
+          if (d < minD) {
+            minD = d;
+            nearestStopObj = pt;
+          }
+        });
+      }
+      return {
+        ...p,
+        resolvedStopId: nearestStopObj ? nearestStopObj.id : p.pontoId,
+        resolvedStopName: nearestStopObj ? nearestStopObj.nome : p.endereco
+      };
+    });
+
     const goingPassengers = passengers.filter((p) => p.statusEmbarque !== 'NAO_VOU');
 
-    document.getElementById('driver-route-title').textContent = rota.nome;
+    document.getElementById('driver-route-title').textContent = `[${sentido}] ${rota.nome}`;
     document.getElementById('driver-vehicle-subtitle').textContent = `${
       veh ? `${veh.prefixo} (${veh.placa}) • ${veh.modelo}` : 'Ônibus Corporativo'
     } • Turno ${rota.turno}`;
@@ -3196,14 +3527,12 @@
     document.getElementById('driver-hud-heading').textContent = Math.round(state.driverRuntime.currentHeading || 0);
     document.getElementById('driver-hud-pax-count').textContent = `${goingPassengers.length}/${passengers.length}`;
 
-    const boardingStops = getBoardingStopsOnly(rota);
-
     // Renderiza Lista de Pontos de Parada
     const stopsEl = document.getElementById('driver-stops-list');
     if (stopsEl) {
       stopsEl.innerHTML = boardingStops
         .map((pt, idx) => {
-          const paxAtStop = goingPassengers.filter((p) => p.pontoId === pt.id).length;
+          const paxAtStop = goingPassengers.filter((p) => p.resolvedStopId === pt.id).length;
           return `
             <div class="p-2.5 rounded-xl bg-slate-900/85 border border-slate-800 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
@@ -3226,14 +3555,13 @@
       paxEl.innerHTML = passengers
         .map((p) => {
           const isGoing = p.statusEmbarque !== 'NAO_VOU';
-          const stopObj = boardingStops.find((pt) => pt.id === p.pontoId);
           return `
             <div class="p-2.5 rounded-xl bg-slate-900/85 border border-slate-800 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
                 <img src="${p.foto || './icons/icon.svg'}" alt="${p.nome}" class="w-8 h-8 rounded-full object-cover border border-slate-700" />
                 <div>
                   <div class="text-xs font-bold text-white">${p.nome}</div>
-                  <div class="text-[11px] text-slate-400">${stopObj ? stopObj.nome : p.endereco}</div>
+                  <div class="text-[11px] text-slate-400">Ponto: ${p.resolvedStopName || p.endereco}</div>
                 </div>
               </div>
               <span class="status-pill ${isGoing ? 'live' : 'idle'}">${isGoing ? 'AGUARDANDO' : 'NÃO VAI'}</span>
@@ -3370,7 +3698,8 @@
   }
 
   /**
-   * Inicia oficialmente a rota do motorista:
+   * Abre e Inicia oficialmente a rota (IDA ou VOLTA) selecionada pelo motorista:
+   * - Fecha automaticamente a rota oposta do mesmo veículo/motorista
    * - Ativa `navigator.geolocation.watchPosition` com alta precisão
    * - Ativa `navigator.wakeLock.request('screen')`
    * - Envia telemetria a cada 6 segundos (entre 5 e 8s) para `Telemetria_TempoReal`
@@ -3383,14 +3712,9 @@
 
     state.driverRuntime.isTripRunning = true;
     state.driverRuntime.tripId = `viagem_${Date.now()}`;
-    rota.status = 'EM_ANDAMENTO';
 
-    document.getElementById('btn-driver-start-route').classList.add('hidden');
-    document.getElementById('btn-driver-finish-route').classList.remove('hidden');
-
-    const hudStatus = document.getElementById('driver-hud-status');
-    hudStatus.className = 'status-pill live';
-    hudStatus.textContent = 'EM ROTA — TRANSMITINDO GPS (6s)';
+    // Abre esta rota (EM_ANDAMENTO) e fecha automaticamente a rota oposta (IDA/VOLTA) do mesmo ônibus
+    await toggleRouteOpenState(rota.id, true);
 
     await requestDriverScreenWakeLock();
 
@@ -3453,7 +3777,7 @@
       heading: state.driverRuntime.currentHeading
     });
 
-    showToast('Rota iniciada! Telemetria GPS 3D e Wake Lock ativados.', 'success');
+    renderDriverCockpitView();
   }
 
   async function stopDriverTripExecution(notify = true) {
@@ -3478,22 +3802,11 @@
 
     await releaseDriverScreenWakeLock();
 
-    const btnStart = document.getElementById('btn-driver-start-route');
-    const btnFinish = document.getElementById('btn-driver-finish-route');
-    if (btnStart) btnStart.classList.remove('hidden');
-    if (btnFinish) btnFinish.classList.add('hidden');
-
-    const hudStatus = document.getElementById('driver-hud-status');
-    if (hudStatus) {
-      hudStatus.className = 'status-pill idle';
-      hudStatus.textContent = 'ROTA FINALIZADA';
-    }
-
     state.driverRuntime.currentSpeed = 0;
     const rota = state.db.rotas.find((r) => r.id === state.driverRuntime.activeRouteId);
     if (rota) {
-      rota.status = 'FINALIZADA';
-      await pushDriverTelemetrySnapshot('FINALIZADA');
+      await toggleRouteOpenState(rota.id, false);
+      await pushDriverTelemetrySnapshot('PARADA');
       await callGasApi({
         action: 'finishRouteTrip',
         tripId: state.driverRuntime.tripId,
@@ -3501,8 +3814,10 @@
       });
     }
 
+    renderDriverCockpitView();
+
     if (notify) {
-      showToast('Viagem finalizada e registrada no Histórico de Viagens!', 'info');
+      showToast('Rota fechada e finalizada! Os usuários não visualizam mais esta rota.', 'info');
     }
   }
 
@@ -4414,6 +4729,19 @@
     });
 
     // Painel do Motorista 3D
+    document.getElementById('driver-select-route')?.addEventListener('change', (e) => {
+      const selectedId = e.target.value;
+      const targetRoute = state.db.rotas.find((r) => r.id === selectedId);
+      if (targetRoute) {
+        state.driverRuntime.activeRouteId = targetRoute.id;
+        state.driverRuntime.simCoordIndex = 0;
+        if (targetRoute.pontos && targetRoute.pontos.length > 0) {
+          state.driverRuntime.currentLat = Number(targetRoute.pontos[0].lat);
+          state.driverRuntime.currentLng = Number(targetRoute.pontos[0].lng);
+        }
+        renderDriverCockpitView();
+      }
+    });
     document.getElementById('btn-driver-start-route')?.addEventListener('click', startDriverTripExecution);
     document.getElementById('btn-driver-finish-route')?.addEventListener('click', () => stopDriverTripExecution(true));
     document.getElementById('btn-driver-simulate-gps')?.addEventListener('click', toggleDriver3dRouteSimulation);
@@ -4455,6 +4783,13 @@
         if (res && res.ok) {
           if (Array.isArray(res.telemetria) && res.telemetria.length > 0) {
             state.db.telemetria = res.telemetria;
+            // Sincroniza em tempo real quais rotas estão ABERTAS (EM_ANDAMENTO) ou FECHADAS (PARADA)
+            res.telemetria.forEach((tel) => {
+              const r = state.db.rotas.find((rt) => rt.id === tel.rotaId);
+              if (r && tel.statusRota) {
+                r.status = tel.statusRota === 'EM_ANDAMENTO' ? 'EM_ANDAMENTO' : 'PARADA';
+              }
+            });
           }
           saveLocalDb();
           refreshActiveViews();

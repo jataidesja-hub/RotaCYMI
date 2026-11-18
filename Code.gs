@@ -234,6 +234,7 @@ function getBootstrapData_() {
     return {
       id: r.id,
       nome: r.nome,
+      tipoRota: r.tipoRota || (String(r.nome || '').toUpperCase().includes('VOLTA') ? 'VOLTA' : 'IDA'),
       turno: r.turno,
       veiculoId: r.veiculoId,
       motoristaId: r.motoristaId,
@@ -499,6 +500,20 @@ function handleStartRouteTrip_(ss, body) {
   const routeRow = routes.find(function(r) { return String(r.id) === String(body.rotaId); });
 
   if (routeRow) {
+    // Fecha automaticamente a outra rota (IDA ou VOLTA) do mesmo ônibus ou motorista
+    routes.forEach(function(r) {
+      if (
+        String(r.id) !== String(routeRow.id) &&
+        r.status === 'EM_ANDAMENTO' &&
+        ((routeRow.veiculoId && String(r.veiculoId) === String(routeRow.veiculoId)) ||
+          (routeRow.motoristaId && String(r.motoristaId) === String(routeRow.motoristaId)))
+      ) {
+        r.status = 'PARADA';
+        r.updatedAt = now;
+        upsertObjectByKey_(routeSheet, 'Rotas', 'id', r);
+      }
+    });
+
     routeRow.status = 'EM_ANDAMENTO';
     routeRow.updatedAt = now;
     upsertObjectByKey_(routeSheet, 'Rotas', 'id', routeRow);
@@ -540,7 +555,7 @@ function handleStartRouteTrip_(ss, body) {
 }
 
 /**
- * Finaliza uma viagem em andamento, atualizando Telemetria, Rotas e Historico_Viagens
+ * Finaliza/Fecha uma viagem em andamento, atualizando Telemetria, Rotas e Historico_Viagens
  */
 function handleFinishRouteTrip_(ss, body) {
   const now = new Date().toISOString();
@@ -549,7 +564,7 @@ function handleFinishRouteTrip_(ss, body) {
   const routeRow = routes.find(function(r) { return String(r.id) === String(body.rotaId); });
 
   if (routeRow) {
-    routeRow.status = 'FINALIZADA';
+    routeRow.status = 'PARADA';
     routeRow.updatedAt = now;
     upsertObjectByKey_(routeSheet, 'Rotas', 'id', routeRow);
   }
@@ -558,7 +573,7 @@ function handleFinishRouteTrip_(ss, body) {
   const telemetries = getSheetRowsAsObjects_(telemetrySheet);
   const telRow = telemetries.find(function(t) { return String(t.rotaId) === String(body.rotaId); });
   if (telRow) {
-    telRow.statusRota = 'FINALIZADA';
+    telRow.statusRota = 'PARADA';
     telRow.velocidade = 0;
     telRow.updatedAt = now;
     upsertObjectByKey_(telemetrySheet, 'Telemetria_TempoReal', 'rotaId', telRow);

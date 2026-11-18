@@ -308,9 +308,18 @@
 
           <form id="form-route-builder" class="space-y-3">
             <input type="hidden" id="route-id" />
-            <div>
-              <label class="block text-xs font-semibold text-slate-300 mb-1">Nome da Rota</label>
-              <input type="text" id="route-name" required class="input-field" placeholder="Ex: Rota 01 - Juazeiro / Petrolina" />
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <div class="sm:col-span-8">
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Nome da Rota</label>
+                <input type="text" id="route-name" required class="input-field" placeholder="Ex: Rota 01 - Juazeiro / Petrolina" />
+              </div>
+              <div class="sm:col-span-4">
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Sentido (Tipo)</label>
+                <select id="route-direction" class="input-field font-bold text-sky-300">
+                  <option value="IDA">IDA</option>
+                  <option value="VOLTA">VOLTA</option>
+                </select>
+              </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -708,16 +717,16 @@
       </div>
     </div>
 
-    <!-- Barra de Rotas Disponíveis para o Funcionário (Mostra as duas rotas / todas as rotas e o ponto mais próximo) -->
+    <!-- Barra de Rota(s) Aberta(s) no Momento (IDA ou VOLTA) -->
     <div class="card-surface p-3.5">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
         <div class="flex items-center gap-2">
-          <i data-lucide="route" class="w-4 h-4 text-sky-400"></i>
-          <span class="text-xs font-bold uppercase tracking-wider text-white">Rotas Disponíveis &amp; Ponto Mais Próximo de Você</span>
+          <i data-lucide="radar" class="w-4 h-4 text-emerald-400"></i>
+          <span class="text-xs font-bold uppercase tracking-wider text-white">Rota Aberta Agora (IDA / VOLTA) &amp; Ponto Mais Próximo</span>
         </div>
-        <span class="text-[11px] text-slate-400">Toque em uma rota para focar ou veja todas juntas no mapa</span>
+        <span class="text-[11px] text-emerald-300 font-semibold" id="pax-open-routes-count-badge">Exibindo somente a rota que está aberta no momento</span>
       </div>
-      <div id="pax-routes-cards-container" class="grid grid-cols-1 md:grid-cols-3 gap-2.5"></div>
+      <div id="pax-routes-cards-container" class="grid grid-cols-1 md:grid-cols-2 gap-2.5"></div>
     </div>
 
     <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Mais Próximo (Haversine) -->
@@ -728,9 +737,9 @@
           <div>
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
               <i data-lucide="navigation" class="w-4 h-4 text-emerald-400"></i>
-              Rastreamento ao Vivo — Ônibus, Sua Localização e Ponto Mais Próximo
+              Rastreamento ao Vivo — Rota Aberta, Sua Localização e Ponto Mais Próximo
             </h3>
-            <p class="text-xs text-slate-400">Linha tracejada verde conecta você automaticamente ao ponto de embarque mais próximo (Fórmula de Haversine).</p>
+            <p class="text-xs text-slate-400">Você visualiza automaticamente a rota aberta no momento (IDA ou VOLTA) e o ponto de embarque mais próximo.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
@@ -776,7 +785,7 @@
 
         <!-- Todos os Pontos da Rota -->
         <div class="card-surface p-4">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Itinerário e Horários da Rota</h3>
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Itinerário e Horários da Rota Aberta</h3>
           <div id="pax-stops-timeline" class="space-y-2.5 max-h-[380px] overflow-y-auto pr-1"></div>
         </div>
       </div>
@@ -855,7 +864,7 @@
        ======================================================================== -->
   <section id="view-driver" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-3 gap-3">
     
-    <!-- HUD Superior de Telemetria e Controles de Viagem -->
+    <!-- HUD Superior de Telemetria e Controles de Viagem (Escolha IDA ou VOLTA) -->
     <div class="card-surface p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-sky-500/30">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
@@ -869,8 +878,11 @@
               <span id="driver-wakelock-text">Wake Lock Inativo</span>
             </span>
           </div>
-          <h2 id="driver-route-title" class="text-lg font-extrabold text-white mt-0.5">Rota Vinculada</h2>
-          <p id="driver-vehicle-subtitle" class="text-xs text-slate-400">Veículo • Turno</p>
+          <div class="flex flex-wrap items-center gap-2 mt-1">
+            <h2 id="driver-route-title" class="text-lg font-extrabold text-white">Rota Vinculada</h2>
+            <select id="driver-select-route" class="input-field !w-auto !py-1 !px-2.5 !text-xs font-bold text-sky-300" title="Selecionar Rota de IDA ou VOLTA para abrir"></select>
+          </div>
+          <p id="driver-vehicle-subtitle" class="text-xs text-slate-400 mt-0.5">Veículo • Turno</p>
         </div>
       </div>
 
@@ -890,15 +902,15 @@
         </div>
       </div>
 
-      <!-- Botões Grandes INICIAR ROTA / FINALIZAR ROTA -->
+      <!-- Botões Grandes INICIAR ROTA (ABRIR ROTA) / FINALIZAR ROTA (FECHAR ROTA) -->
       <div class="flex items-center gap-2.5">
         <button type="button" id="btn-driver-start-route" class="btn-emerald !py-3.5 !px-6 text-sm sm:text-base flex-1 lg:flex-initial shadow-lg">
           <i data-lucide="play" class="w-5 h-5 fill-current"></i>
-          <span>INICIAR ROTA</span>
+          <span>ABRIR / INICIAR ROTA</span>
         </button>
         <button type="button" id="btn-driver-finish-route" class="btn-danger !py-3.5 !px-6 text-sm sm:text-base flex-1 lg:flex-initial hidden">
           <i data-lucide="square" class="w-5 h-5 fill-current"></i>
-          <span>FINALIZAR ROTA</span>
+          <span>FECHAR / FINALIZAR ROTA</span>
         </button>
       </div>
     </div>
