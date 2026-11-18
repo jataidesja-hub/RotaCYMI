@@ -2,7 +2,7 @@
  * ROTA CYMI - SERVICE WORKER (PWA OFFLINE & SHELL CACHE)
  * ============================================================================ */
 
-const CACHE_NAME = 'rotacymi-pwa-v1.4.0';
+const CACHE_NAME = 'rotacymi-pwa-v1.5.0';
 const STATIC_ASSETS = [
   './',
   './index.html',

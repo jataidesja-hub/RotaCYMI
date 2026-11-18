@@ -20,11 +20,19 @@
   // URL oficial do Web App Google Apps Script do projeto RotaCYMI
   const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxS8iYzbh9ULPsZVfgttiDYTvhBCVgIYwTbDf7mBfGdt1AOUQqGOJdLicfKQVkGPmWk/exec';
 
-  // Estilo Vetorial Gratuito CartoDB Dark Matter + Camada de Edifícios 3D OpenFreeMap
+  // Coordenadas Padrão Fixadas em Juazeiro - BA / Petrolina - PE (Vale do São Francisco)
+  const DEFAULT_LAT = -9.4112;
+  const DEFAULT_LNG = -40.5028;
+  const CITY_COORDS = {
+    juazeiro: { lat: -9.4162, lng: -40.5033, label: 'Juazeiro - BA' },
+    petrolina: { lat: -9.3942, lng: -40.5012, label: 'Petrolina - PE' }
+  };
+
+  // Estilo Vetorial Gratuito CartoDB Dark Matter
   const VECTOR_MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
   /* ==========================================================================
-   * 2. DADOS INICIAIS (SEED CORPORATIVO + MASTER ADMIN jasantos@cymibr.com)
+   * 2. DADOS INICIAIS (SEED CORPORATIVO JUAZEIRO/PETROLINA + MASTER ADMIN)
    * ========================================================================== */
   function createInitialSeedData() {
     const now = new Date().toISOString();
@@ -36,10 +44,10 @@
           email: 'jasantos@cymibr.com',
           senha: 'Sabre0858',
           perfil: 'ADMIN',
-          telefone: '(11) 99999-0858',
-          endereco: 'Av. Paulista, 1578 - Bela Vista, São Paulo - SP',
-          lat: -23.561414,
-          lng: -46.655881,
+          telefone: '(74) 99999-0858',
+          endereco: 'Av. Adolfo Viana, Centro, Juazeiro - BA',
+          lat: -9.4138,
+          lng: -40.5032,
           rotaId: 'rota_01',
           pontoId: 'pto_01',
           statusEmbarque: 'NAO_VOU',
@@ -52,10 +60,10 @@
           email: 'mariana.silva@cymibr.com',
           senha: 'cymi123',
           perfil: 'PASSAGEIRO',
-          telefone: '(11) 98765-4321',
-          endereco: 'Rua Vergueiro, 1855 - Vila Mariana, São Paulo - SP',
-          lat: -23.57982,
-          lng: -46.63984,
+          telefone: '(74) 98765-4321',
+          endereco: 'Orla de Juazeiro, Centro, Juazeiro - BA',
+          lat: -9.4102,
+          lng: -40.5018,
           rotaId: 'rota_01',
           pontoId: 'pto_02',
           statusEmbarque: 'VOU',
@@ -68,10 +76,10 @@
           email: 'rafael.oliveira@cymibr.com',
           senha: 'cymi123',
           perfil: 'PASSAGEIRO',
-          telefone: '(11) 98222-1199',
-          endereco: 'Av. Brigadeiro Luís Antônio, 2480 - Jardim Paulista, SP',
-          lat: -23.56912,
-          lng: -46.65122,
+          telefone: '(87) 98222-1199',
+          endereco: 'Av. Monsenhor Ângelo Sampaio, Petrolina - PE',
+          lat: -9.4018,
+          lng: -40.4996,
           rotaId: 'rota_01',
           pontoId: 'pto_03',
           statusEmbarque: 'VOU',
@@ -84,10 +92,10 @@
           email: 'fernanda.costa@cymibr.com',
           senha: 'cymi123',
           perfil: 'PASSAGEIRO',
-          telefone: '(11) 97111-3344',
-          endereco: 'Praça da Sé, 100 - Centro Histórico, São Paulo - SP',
-          lat: -23.55039,
-          lng: -46.63398,
+          telefone: '(87) 97111-3344',
+          endereco: 'Av. Guararapes, Centro, Petrolina - PE',
+          lat: -9.3942,
+          lng: -40.5012,
           rotaId: 'rota_01',
           pontoId: 'pto_04',
           statusEmbarque: 'NAO_VOU',
@@ -121,7 +129,7 @@
           nome: 'Carlos Eduardo Mendes',
           cpf: '284.910.448-12',
           cnh: '04918273611 (Cat D)',
-          telefone: '(11) 97654-3210',
+          telefone: '(74) 97654-3210',
           email: 'carlos.mot@cymibr.com',
           senha: 'cymi123',
           veiculoId: 'veic_101',
@@ -132,7 +140,7 @@
           nome: 'Roberto Alves Nascimento',
           cpf: '319.442.871-04',
           cnh: '05829104491 (Cat E)',
-          telefone: '(11) 96543-9988',
+          telefone: '(87) 96543-9988',
           email: 'roberto.mot@cymibr.com',
           senha: 'cymi123',
           veiculoId: 'veic_102',
@@ -142,54 +150,51 @@
       rotas: [
         {
           id: 'rota_01',
-          nome: 'Rota 01 — Eixo Zona Sul / Av. Paulista / Sede CYMI',
+          nome: 'Rota 01 — Juazeiro (BA) / Petrolina (PE) / Sede CYMI',
           turno: 'Manhã',
           veiculoId: 'veic_101',
           motoristaId: 'mot_01',
           status: 'EM_ANDAMENTO',
-          distanciaKm: 6.4,
-          duracaoMin: 22,
+          distanciaKm: 5.8,
+          duracaoMin: 18,
           pontos: [
             {
               id: 'pto_01',
-              nome: 'Ponto 1 — Terminal Ana Rosa',
+              nome: 'Ponto 1 — Rodoviária / Centro Juazeiro (BA)',
               horario: '06:30',
-              lat: -23.58134,
-              lng: -46.63834
+              lat: -9.4195,
+              lng: -40.5015
             },
             {
               id: 'pto_02',
-              nome: 'Ponto 2 — Estação Paraíso / Vergueiro',
+              nome: 'Ponto 2 — Av. Adolfo Viana / Orla Juazeiro (BA)',
               horario: '06:40',
-              lat: -23.57541,
-              lng: -46.64071
+              lat: -9.4112,
+              lng: -40.5032
             },
             {
               id: 'pto_03',
-              nome: 'Ponto 3 — Av. Paulista (MASP / CYMI Hub)',
+              nome: 'Ponto 3 — River Shopping / Petrolina (PE)',
               horario: '06:52',
-              lat: -23.56141,
-              lng: -46.65588
+              lat: -9.4018,
+              lng: -40.4996
             },
             {
               id: 'pto_04',
-              nome: 'Ponto 4 — Sede Operacional CYMI Centro',
-              horario: '07:10',
-              lat: -23.55052,
-              lng: -46.63331
+              nome: 'Ponto 4 — Av. Guararapes / Centro Petrolina (PE)',
+              horario: '07:05',
+              lat: -9.3942,
+              lng: -40.5012
             }
           ],
-          // Polyline inicial conectando os pontos (atualizada via OSRM quando carregada)
           polyline: [
-            [-46.63834, -23.58134],
-            [-46.6395, -23.5785],
-            [-46.64071, -23.57541],
-            [-46.6442, -23.5701],
-            [-46.6498, -23.5662],
-            [-46.65588, -23.56141],
-            [-46.6481, -23.5568],
-            [-46.6402, -23.5531],
-            [-46.63331, -23.55052]
+            [-40.5015, -9.4195],
+            [-40.5025, -9.4150],
+            [-40.5032, -9.4112],
+            [-40.5015, -9.4055],
+            [-40.4996, -9.4018],
+            [-40.5005, -9.3978],
+            [-40.5012, -9.3942]
           ],
           updatedAt: now
         }
@@ -199,10 +204,10 @@
           rotaId: 'rota_01',
           motoristaId: 'mot_01',
           veiculoId: 'veic_101',
-          lat: -23.5718,
-          lng: -46.6431,
+          lat: -9.4112,
+          lng: -40.5032,
           velocidade: 38,
-          heading: 325,
+          heading: 15,
           statusRota: 'EM_ANDAMENTO',
           proximoPontoId: 'pto_03',
           updatedAt: now
@@ -223,6 +228,7 @@
     activeAdminTab: 'tower',
     isSatelliteMode: false,
     builderClickMode: 'navigate', // 'navigate' | 'waypoint' | 'add_stop'
+    hasInitialTowerCentered: false,
 
     // Instâncias de Mapas MapLibre GL
     maps: {
@@ -263,10 +269,10 @@
     tempAdminPaxPhoto: '',
     tempSelfPaxPhoto: '',
 
-    // Estado de GPS e Telemetria do Passageiro
+    // Estado de GPS e Telemetria do Passageiro (Padrão Juazeiro / Petrolina)
     passengerGps: {
-      lat: -23.5762,
-      lng: -46.6412,
+      lat: DEFAULT_LAT,
+      lng: DEFAULT_LNG,
       watchId: null
     },
 
@@ -280,10 +286,10 @@
       wakeLockSentinel: null,
       simInterval: null,
       simCoordIndex: 0,
-      currentLat: -23.57541,
-      currentLng: -46.64071,
+      currentLat: DEFAULT_LAT,
+      currentLng: DEFAULT_LNG,
       currentSpeed: 0,
-      currentHeading: 330
+      currentHeading: 15
     },
 
     // Simulador da Torre de Controle
@@ -296,6 +302,68 @@
   /* ==========================================================================
    * 4. PERSISTÊNCIA LOCAL & CLIENTE SERVERLESS GOOGLE APPS SCRIPT (CORS SAFE)
    * ========================================================================== */
+  function isLegacySaoPauloCoord(lat, lng) {
+    const la = Number(lat);
+    const ln = Number(lng);
+    return la < -20 && la > -25 && ln < -44 && ln > -48;
+  }
+
+  /**
+   * Migra automaticamente coordenadas antigas de exemplo de São Paulo (-23.5, -46.6)
+   * para Juazeiro - BA / Petrolina - PE (-9.41, -40.50) para que o mapa nunca abra em SP.
+   */
+  function migrateLegacySaoPauloCoords(dbObj) {
+    if (!dbObj) return;
+
+    // Descobre primeiro ponto válido de rota já criada em Juazeiro/Petrolina, se houver
+    let refLat = DEFAULT_LAT;
+    let refLng = DEFAULT_LNG;
+    if (Array.isArray(dbObj.rotas)) {
+      for (const r of dbObj.rotas) {
+        if (Array.isArray(r.pontos) && r.pontos.length > 0) {
+          const p0 = r.pontos[0];
+          if (!isLegacySaoPauloCoord(p0.lat, p0.lng)) {
+            refLat = Number(p0.lat);
+            refLng = Number(p0.lng);
+            break;
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(dbObj.usuarios)) {
+      dbObj.usuarios.forEach((u, idx) => {
+        if (!u.lat || !u.lng || isLegacySaoPauloCoord(u.lat, u.lng)) {
+          u.lat = Number((refLat - idx * 0.0025).toFixed(6));
+          u.lng = Number((refLng + idx * 0.0015).toFixed(6));
+          if (String(u.endereco || '').includes('São Paulo') || String(u.endereco || '').includes('SP')) {
+            u.endereco = 'Centro, Juazeiro - BA / Petrolina - PE';
+          }
+        }
+      });
+    }
+
+    if (Array.isArray(dbObj.rotas)) {
+      dbObj.rotas.forEach((r) => {
+        if (Array.isArray(r.pontos) && r.pontos.length > 0 && isLegacySaoPauloCoord(r.pontos[0].lat, r.pontos[0].lng)) {
+          const seedRoute = createInitialSeedData().rotas[0];
+          r.nome = seedRoute.nome;
+          r.pontos = seedRoute.pontos;
+          r.polyline = seedRoute.polyline;
+        }
+      });
+    }
+
+    if (Array.isArray(dbObj.telemetria)) {
+      dbObj.telemetria.forEach((t) => {
+        if (!t.lat || !t.lng || isLegacySaoPauloCoord(t.lat, t.lng)) {
+          t.lat = refLat;
+          t.lng = refLng;
+        }
+      });
+    }
+  }
+
   function loadLocalDb() {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.DB_CACHE);
@@ -303,6 +371,7 @@
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.usuarios)) {
           ensureMasterAdminInDb(parsed);
+          migrateLegacySaoPauloCoords(parsed);
           return parsed;
         }
       }
@@ -325,10 +394,10 @@
         email: 'jasantos@cymibr.com',
         senha: 'Sabre0858',
         perfil: 'ADMIN',
-        telefone: '(11) 99999-0858',
-        endereco: 'Sede Corporativa CYMI Brasil',
-        lat: -23.561414,
-        lng: -46.655881,
+        telefone: '(74) 99999-0858',
+        endereco: 'Sede Operacional CYMI — Juazeiro / Petrolina',
+        lat: DEFAULT_LAT,
+        lng: DEFAULT_LNG,
         rotaId: 'rota_01',
         pontoId: 'pto_01',
         statusEmbarque: 'NAO_VOU',
@@ -340,6 +409,7 @@
 
   function saveLocalDb() {
     ensureMasterAdminInDb(state.db);
+    migrateLegacySaoPauloCoords(state.db);
     localStorage.setItem(STORAGE_KEYS.DB_CACHE, JSON.stringify(state.db));
   }
 
@@ -516,16 +586,61 @@
   }
 
   /**
-   * Geocodificação gratuita via Nominatim OpenStreetMap (Busca endereço -> Coordenadas GPS)
+   * Retorna o centro inicial ideal do mapa priorizando a rota ativa ou Juazeiro/Petrolina
+   */
+  function getDefaultMapCenter() {
+    if (Array.isArray(state.db.rotas) && state.db.rotas.length > 0) {
+      const r0 = state.db.rotas[0];
+      if (Array.isArray(r0.pontos) && r0.pontos.length > 0) {
+        const p0 = r0.pontos[0];
+        if (!isLegacySaoPauloCoord(p0.lat, p0.lng)) {
+          return [Number(p0.lng), Number(p0.lat)];
+        }
+      }
+    }
+    return [DEFAULT_LNG, DEFAULT_LAT];
+  }
+
+  /**
+   * Centraliza rapidamente os mapas em Juazeiro - BA ou Petrolina - PE
+   */
+  function focusMapsOnCity(cityKey) {
+    const target = CITY_COORDS[cityKey] || CITY_COORDS.juazeiro;
+    const coords = [target.lng, target.lat];
+    [state.maps.tower, state.maps.routeBuilder, state.maps.paxPicker, state.maps.passengerLive].forEach((m) => {
+      if (m) {
+        m.flyTo({ center: coords, zoom: 14.2, duration: 750 });
+      }
+    });
+    showToast(`Mapa centralizado em ${target.label}!`, 'info');
+  }
+
+  /**
+   * Geocodificação gratuita via Nominatim OpenStreetMap priorizando Juazeiro - BA e Petrolina - PE
    */
   async function geocodeAddressString(query) {
     if (!query || !query.trim()) return null;
+    const rawQ = query.trim();
+    const hasCity = /juazeiro|petrolina|ba|pe/i.test(rawQ);
+    const regionalQuery = hasCity ? rawQ : `${rawQ}, Juazeiro, Petrolina`;
+
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query.trim())}`;
+      // Viewbox focado no Vale do São Francisco (Juazeiro - BA / Petrolina - PE)
+      const viewbox = '-40.68,-9.25,-40.35,-9.58';
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&viewbox=${viewbox}&q=${encodeURIComponent(regionalQuery)}`;
       const res = await fetch(url, {
         headers: { 'Accept-Language': 'pt-BR' }
       });
-      const items = await res.json();
+      let items = await res.json();
+
+      if (!Array.isArray(items) || items.length === 0) {
+        const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(rawQ)}`;
+        const fallbackRes = await fetch(fallbackUrl, {
+          headers: { 'Accept-Language': 'pt-BR' }
+        });
+        items = await fallbackRes.json();
+      }
+
       if (Array.isArray(items) && items.length > 0) {
         return {
           lat: parseFloat(items[0].lat),
@@ -612,48 +727,121 @@
 
   /**
    * Adiciona e sincroniza a camada de imagens de Satélite de Alta Resolução (Esri World Imagery)
-   * em qualquer instância de mapa MapLibre GL, mantendo as rotas e marcadores visíveis por cima.
+   * + Rótulos Híbridos de Ruas/Bairros em qualquer instância de mapa MapLibre GL,
+   * funcionando mesmo enquanto o mapa está animando ou carregando tiles.
    */
   function ensureSatelliteLayerOnMap(map, beforeLayerId) {
     if (!map) return;
-    if (!map.getSource('esri-world-satellite')) {
-      map.addSource('esri-world-satellite', {
-        type: 'raster',
-        tiles: [
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        ],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: 'Tiles &copy; Esri — World Imagery Satellite'
-      });
-    }
 
-    if (!map.getLayer('esri-world-satellite-layer')) {
-      const layerConfig = {
-        id: 'esri-world-satellite-layer',
-        type: 'raster',
-        source: 'esri-world-satellite',
-        layout: {
-          visibility: state.isSatelliteMode ? 'visible' : 'none'
-        },
-        paint: {
-          'raster-opacity': 0.96,
-          'raster-contrast': 0.06
+    const applyLayers = () => {
+      try {
+        if (!map.getSource('esri-world-satellite')) {
+          map.addSource('esri-world-satellite', {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: 'Tiles &copy; Esri — World Imagery Satellite'
+          });
         }
-      };
 
-      if (beforeLayerId && map.getLayer(beforeLayerId)) {
-        map.addLayer(layerConfig, beforeLayerId);
-      } else {
-        map.addLayer(layerConfig);
+        if (!map.getSource('esri-world-hybrid-roads')) {
+          map.addSource('esri-world-hybrid-roads', {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            maxzoom: 19
+          });
+        }
+
+        if (!map.getSource('esri-world-hybrid-places')) {
+          map.addSource('esri-world-hybrid-places', {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            maxzoom: 19
+          });
+        }
+
+        const targetBefore = beforeLayerId && map.getLayer(beforeLayerId) ? beforeLayerId : undefined;
+        const vis = state.isSatelliteMode ? 'visible' : 'none';
+
+        if (!map.getLayer('esri-world-satellite-layer')) {
+          map.addLayer(
+            {
+              id: 'esri-world-satellite-layer',
+              type: 'raster',
+              source: 'esri-world-satellite',
+              layout: { visibility: vis },
+              paint: {
+                'raster-opacity': 1,
+                'raster-contrast': 0.05
+              }
+            },
+            targetBefore
+          );
+        } else {
+          map.setLayoutProperty('esri-world-satellite-layer', 'visibility', vis);
+        }
+
+        if (!map.getLayer('esri-world-hybrid-roads-layer')) {
+          map.addLayer(
+            {
+              id: 'esri-world-hybrid-roads-layer',
+              type: 'raster',
+              source: 'esri-world-hybrid-roads',
+              layout: { visibility: vis },
+              paint: { 'raster-opacity': 0.88 }
+            },
+            targetBefore
+          );
+        } else {
+          map.setLayoutProperty('esri-world-hybrid-roads-layer', 'visibility', vis);
+        }
+
+        if (!map.getLayer('esri-world-hybrid-places-layer')) {
+          map.addLayer(
+            {
+              id: 'esri-world-hybrid-places-layer',
+              type: 'raster',
+              source: 'esri-world-hybrid-places',
+              layout: { visibility: vis },
+              paint: { 'raster-opacity': 0.95 }
+            },
+            targetBefore
+          );
+        } else {
+          map.setLayoutProperty('esri-world-hybrid-places-layer', 'visibility', vis);
+        }
+
+        if (typeof map.triggerRepaint === 'function') {
+          map.triggerRepaint();
+        }
+      } catch (err) {
+        // Caso o estilo base ainda esteja inicializando, agenda aplicação assim que carregar
+        map.once('styledata', applyLayers);
+        map.once('load', applyLayers);
       }
-    } else {
-      map.setLayoutProperty(
-        'esri-world-satellite-layer',
-        'visibility',
-        state.isSatelliteMode ? 'visible' : 'none'
-      );
-    }
+    };
+
+    applyLayers();
+  }
+
+  function updateSatelliteButtonsUi() {
+    document.querySelectorAll('.label-satellite-state').forEach((el) => {
+      el.textContent = state.isSatelliteMode ? 'Mapa Vetorial' : 'Modo Satélite';
+    });
+
+    document.querySelectorAll('[data-toggle-satellite]').forEach((btn) => {
+      btn.classList.toggle('bg-emerald-500/25', state.isSatelliteMode);
+      btn.classList.toggle('border-emerald-400', state.isSatelliteMode);
+    });
   }
 
   function toggleAllMapsSatelliteMode() {
@@ -669,23 +857,16 @@
     ];
 
     mapConfigs.forEach(({ map, before }) => {
-      if (map && map.isStyleLoaded()) {
+      if (map) {
         ensureSatelliteLayerOnMap(map, before);
       }
     });
 
-    document.querySelectorAll('.label-satellite-state').forEach((el) => {
-      el.textContent = state.isSatelliteMode ? 'Mapa Vetorial' : 'Modo Satélite';
-    });
-
-    document.querySelectorAll('[data-toggle-satellite]').forEach((btn) => {
-      btn.classList.toggle('bg-emerald-500/20', state.isSatelliteMode);
-      btn.classList.toggle('border-emerald-400', state.isSatelliteMode);
-    });
+    updateSatelliteButtonsUi();
 
     showToast(
       state.isSatelliteMode
-        ? 'Modo Satélite de Alta Resolução ativado em todos os mapas!'
+        ? 'Modo Satélite Híbrido (Imagens Reais + Ruas) ativado!'
         : 'Modo Mapa Vetorial Tático ativado!',
       'info'
     );
@@ -1034,10 +1215,10 @@
     const map = new maplibregl.Map({
       container: 'map-admin-tower',
       style: VECTOR_MAP_STYLE,
-      center: [-46.6442, -23.5665],
-      zoom: 12.8,
+      center: getDefaultMapCenter(),
+      zoom: 13.4,
       pitch: 35,
-      bearing: -10,
+      bearing: 0,
       antialias: true
     });
 
@@ -1133,14 +1314,11 @@
       listContainer.querySelectorAll('[data-focus-route]').forEach((card) => {
         card.addEventListener('click', () => {
           const rId = card.getAttribute('data-focus-route');
-          const tel = state.db.telemetria.find((t) => t.rotaId === rId);
-          if (tel && state.maps.tower) {
-            state.maps.tower.flyTo({
-              center: [Number(tel.lng), Number(tel.lat)],
-              zoom: 14.8,
-              pitch: 50,
-              duration: 900
-            });
+          const rObj = state.db.rotas.find((r) => r.id === rId);
+          if (rObj && Array.isArray(rObj.pontos) && rObj.pontos.length > 0 && state.maps.tower) {
+            const bounds = new maplibregl.LngLatBounds();
+            rObj.pontos.forEach((pt) => bounds.extend([Number(pt.lng), Number(pt.lat)]));
+            state.maps.tower.fitBounds(bounds, { padding: 65, maxZoom: 14.8, duration: 850 });
           }
         });
       });
@@ -1201,9 +1379,9 @@
       });
     });
 
-    // Adiciona Passageiros na Torre
+    // Adiciona Passageiros na Torre (apenas se estiverem na região válida)
     passengers.forEach((pax) => {
-      if (!pax.lat || !pax.lng) return;
+      if (!pax.lat || !pax.lng || isLegacySaoPauloCoord(pax.lat, pax.lng)) return;
       const isGoing = pax.statusEmbarque !== 'NAO_VOU';
       const initials = (pax.nome || 'P')
         .split(' ')
@@ -1236,8 +1414,8 @@
     // Adiciona Ônibus em Tempo Real na Torre
     routes.forEach((r) => {
       const tel = telemetries.find((t) => t.rotaId === r.id) || {
-        lat: r.pontos && r.pontos[0] ? r.pontos[0].lat : -23.5614,
-        lng: r.pontos && r.pontos[0] ? r.pontos[0].lng : -46.6558,
+        lat: r.pontos && r.pontos[0] ? r.pontos[0].lat : DEFAULT_LAT,
+        lng: r.pontos && r.pontos[0] ? r.pontos[0].lng : DEFAULT_LNG,
         velocidade: 0,
         heading: 0
       };
@@ -1266,6 +1444,24 @@
         .addTo(map);
       state.markers.towerBuses.push(marker);
     });
+
+    // Enquadra automaticamente na rota ativa (Juazeiro/Petrolina) ao abrir pela primeira vez
+    if (!state.hasInitialTowerCentered && routes.length > 0) {
+      const bounds = new maplibregl.LngLatBounds();
+      let count = 0;
+      routes.forEach((r) => {
+        (r.pontos || []).forEach((pt) => {
+          if (!isLegacySaoPauloCoord(pt.lat, pt.lng)) {
+            bounds.extend([Number(pt.lng), Number(pt.lat)]);
+            count += 1;
+          }
+        });
+      });
+      if (count > 0) {
+        state.hasInitialTowerCentered = true;
+        map.fitBounds(bounds, { padding: 65, maxZoom: 14.2, duration: 600 });
+      }
+    }
   }
 
   /* --------------------------------------------------------------------------
@@ -1344,8 +1540,8 @@
     const map = new maplibregl.Map({
       container: 'map-route-builder',
       style: VECTOR_MAP_STYLE,
-      center: [-46.6442, -23.5665],
-      zoom: 13,
+      center: getDefaultMapCenter(),
+      zoom: 13.5,
       antialias: true
     });
 
@@ -1782,8 +1978,8 @@
       return;
     }
 
-    const lat = parseFloat(document.getElementById('pax-lat').value) || -23.5614;
-    const lng = parseFloat(document.getElementById('pax-lng').value) || -46.6559;
+    const lat = parseFloat(document.getElementById('pax-lat').value) || DEFAULT_LAT;
+    const lng = parseFloat(document.getElementById('pax-lng').value) || DEFAULT_LNG;
 
     const map = new maplibregl.Map({
       container: 'map-pax-picker',
@@ -1832,8 +2028,8 @@
       perfil: 'PASSAGEIRO',
       telefone: document.getElementById('pax-phone').value.trim(),
       endereco: document.getElementById('pax-address').value.trim(),
-      lat: parseFloat(document.getElementById('pax-lat').value) || -23.5614,
-      lng: parseFloat(document.getElementById('pax-lng').value) || -46.6559,
+      lat: parseFloat(document.getElementById('pax-lat').value) || DEFAULT_LAT,
+      lng: parseFloat(document.getElementById('pax-lng').value) || DEFAULT_LNG,
       rotaId: document.getElementById('pax-route').value,
       pontoId: document.getElementById('pax-stop').value,
       statusEmbarque: existing ? existing.statusEmbarque : 'VOU',
@@ -1869,6 +2065,10 @@
     document.getElementById('pax-email').value = '';
     document.getElementById('pax-password').value = '';
     document.getElementById('pax-address').value = '';
+    document.getElementById('pax-lat').value = DEFAULT_LAT;
+    document.getElementById('pax-lng').value = DEFAULT_LNG;
+    document.getElementById('pax-lat-display').textContent = DEFAULT_LAT;
+    document.getElementById('pax-lng-display').textContent = DEFAULT_LNG;
     document.getElementById('pax-photo-preview').src = './icons/icon.svg';
     state.tempAdminPaxPhoto = '';
   }
@@ -1935,17 +2135,17 @@
         document.getElementById('pax-email').value = u.email || '';
         document.getElementById('pax-password').value = u.senha || '';
         document.getElementById('pax-address').value = u.endereco || '';
-        document.getElementById('pax-lat').value = u.lat || -23.5614;
-        document.getElementById('pax-lng').value = u.lng || -46.6559;
-        document.getElementById('pax-lat-display').textContent = u.lat || -23.5614;
-        document.getElementById('pax-lng-display').textContent = u.lng || -46.6559;
+        document.getElementById('pax-lat').value = u.lat || DEFAULT_LAT;
+        document.getElementById('pax-lng').value = u.lng || DEFAULT_LNG;
+        document.getElementById('pax-lat-display').textContent = u.lat || DEFAULT_LAT;
+        document.getElementById('pax-lng-display').textContent = u.lng || DEFAULT_LNG;
         document.getElementById('pax-route').value = u.rotaId || '';
         updatePaxStopsDropdown(u.rotaId, u.pontoId);
         document.getElementById('pax-photo-preview').src = u.foto || './icons/icon.svg';
         state.tempAdminPaxPhoto = u.foto || '';
 
         if (state.maps.paxPicker && state.markers.paxPickerMarker) {
-          const coords = [Number(u.lng || -46.6559), Number(u.lat || -23.5614)];
+          const coords = [Number(u.lng || DEFAULT_LNG), Number(u.lat || DEFAULT_LAT)];
           state.markers.paxPickerMarker.setLngLat(coords);
           state.maps.paxPicker.flyTo({ center: coords, zoom: 15 });
         }
@@ -2172,7 +2372,7 @@
     state.currentUser = freshUser;
 
     // Define localização inicial como a residência cadastrada até o GPS responder
-    if (freshUser.lat && freshUser.lng) {
+    if (freshUser.lat && freshUser.lng && !isLegacySaoPauloCoord(freshUser.lat, freshUser.lng)) {
       state.passengerGps.lat = Number(freshUser.lat);
       state.passengerGps.lng = Number(freshUser.lng);
     }
@@ -2273,8 +2473,8 @@
     const veh = state.db.veiculos.find((v) => v.id === rota.veiculoId);
     const drv = state.db.motoristas.find((m) => m.id === rota.motoristaId);
     const tel = state.db.telemetria.find((t) => t.rotaId === rota.id) || {
-      lat: rota.pontos[0]?.lat || -23.5754,
-      lng: rota.pontos[0]?.lng || -46.6407,
+      lat: rota.pontos[0]?.lat || DEFAULT_LAT,
+      lng: rota.pontos[0]?.lng || DEFAULT_LNG,
       velocidade: 34,
       heading: 0,
       statusRota: rota.status
@@ -2302,8 +2502,8 @@
     }
 
     // Cálculo via Fórmula de Haversine para encontrar o Ponto de Embarque Mais Próximo
-    const userLat = Number(state.passengerGps.lat || user.lat || -23.5754);
-    const userLng = Number(state.passengerGps.lng || user.lng || -46.6407);
+    const userLat = Number(state.passengerGps.lat || user.lat || DEFAULT_LAT);
+    const userLng = Number(state.passengerGps.lng || user.lng || DEFAULT_LNG);
 
     let nearestStop = null;
     let minDistanceMeters = Infinity;
@@ -2489,16 +2689,16 @@
     document.getElementById('self-pax-phone').value = user.telefone || '';
     document.getElementById('self-pax-address').value = user.endereco || '';
     document.getElementById('self-pax-password').value = user.senha || '';
-    document.getElementById('self-pax-lat').value = user.lat || -23.5754;
-    document.getElementById('self-pax-lng').value = user.lng || -46.6407;
-    document.getElementById('self-pax-lat-label').textContent = user.lat || -23.5754;
-    document.getElementById('self-pax-lng-label').textContent = user.lng || -46.6407;
+    document.getElementById('self-pax-lat').value = user.lat || DEFAULT_LAT;
+    document.getElementById('self-pax-lng').value = user.lng || DEFAULT_LNG;
+    document.getElementById('self-pax-lat-label').textContent = user.lat || DEFAULT_LAT;
+    document.getElementById('self-pax-lng-label').textContent = user.lng || DEFAULT_LNG;
     document.getElementById('self-pax-photo-preview').src = user.foto || './icons/icon.svg';
     state.tempSelfPaxPhoto = user.foto || '';
 
     setTimeout(() => {
-      const lat = parseFloat(document.getElementById('self-pax-lat').value) || -23.5754;
-      const lng = parseFloat(document.getElementById('self-pax-lng').value) || -46.6407;
+      const lat = parseFloat(document.getElementById('self-pax-lat').value) || DEFAULT_LAT;
+      const lng = parseFloat(document.getElementById('self-pax-lng').value) || DEFAULT_LNG;
 
       if (!state.maps.selfPaxHome) {
         const map = new maplibregl.Map({
@@ -2553,8 +2753,8 @@
       telefone: document.getElementById('self-pax-phone').value.trim(),
       endereco: document.getElementById('self-pax-address').value.trim(),
       senha: document.getElementById('self-pax-password').value.trim(),
-      lat: parseFloat(document.getElementById('self-pax-lat').value) || -23.5754,
-      lng: parseFloat(document.getElementById('self-pax-lng').value) || -46.6407,
+      lat: parseFloat(document.getElementById('self-pax-lat').value) || DEFAULT_LAT,
+      lng: parseFloat(document.getElementById('self-pax-lng').value) || DEFAULT_LNG,
       foto: state.tempSelfPaxPhoto || state.db.usuarios[idx].foto || '',
       updatedAt: new Date().toISOString()
     };
@@ -3352,6 +3552,13 @@
       btn.addEventListener('click', toggleAllMapsSatelliteMode);
     });
 
+    // Foco rápido em Juazeiro - BA ou Petrolina - PE
+    document.querySelectorAll('[data-focus-city]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        focusMapsOnCity(btn.getAttribute('data-focus-city'));
+      });
+    });
+
     // Alternador Rápido de Telas para o Administrador (Admin <-> Motorista 3D <-> Passageiro)
     document.querySelectorAll('[data-switch-view]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -3370,8 +3577,22 @@
     document.getElementById('btn-tower-fit-all')?.addEventListener('click', () => {
       if (!state.maps.tower) return;
       const bounds = new maplibregl.LngLatBounds();
-      state.db.rotas.forEach((r) => (r.pontos || []).forEach((pt) => bounds.extend([Number(pt.lng), Number(pt.lat)])));
-      state.maps.tower.fitBounds(bounds, { padding: 65, maxZoom: 14 });
+      let count = 0;
+      state.db.rotas.forEach((r) =>
+        (r.pontos || []).forEach((pt) => {
+          const lat = Number(pt.lat);
+          const lng = Number(pt.lng);
+          if (!isNaN(lat) && !isNaN(lng) && !isLegacySaoPauloCoord(lat, lng)) {
+            bounds.extend([lng, lat]);
+            count++;
+          }
+        })
+      );
+      if (count > 0) {
+        state.maps.tower.fitBounds(bounds, { padding: 65, maxZoom: 14 });
+      } else {
+        state.maps.tower.flyTo({ center: [DEFAULT_LNG, DEFAULT_LAT], zoom: 13.2 });
+      }
     });
     document.getElementById('btn-tower-toggle-3d')?.addEventListener('click', () => {
       if (!state.maps.tower) return;
@@ -3394,13 +3615,21 @@
       renderRouteBuilderStopsAndPolyline();
       showToast('Trajeto nas ruas recalculado via OSRM!', 'success');
     });
-    document.getElementById('btn-route-map-search')?.addEventListener('click', async () => {
-      const q = document.getElementById('route-map-search').value;
+    const triggerRouteMapSearch = async () => {
+      const q = document.getElementById('route-map-search')?.value;
       const geo = await geocodeAddressString(q);
       if (geo && state.maps.routeBuilder) {
-        state.maps.routeBuilder.flyTo({ center: [geo.lng, geo.lat], zoom: 15 });
+        state.maps.routeBuilder.flyTo({ center: [geo.lng, geo.lat], zoom: 15.5 });
+        showToast(`Localizado: ${geo.displayName.split(',')[0]}`, 'success');
       } else {
-        showToast('Endereço não encontrado.', 'warning');
+        showToast('Endereço não encontrado em Juazeiro/Petrolina.', 'warning');
+      }
+    };
+    document.getElementById('btn-route-map-search')?.addEventListener('click', triggerRouteMapSearch);
+    document.getElementById('route-map-search')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        triggerRouteMapSearch();
       }
     });
 

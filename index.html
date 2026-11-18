@@ -307,14 +307,22 @@
             </h2>
             <p class="text-xs text-slate-400">Ônibus ativos, velocidade GPS, rotas OSRM e colaboradores aguardando nos pontos.</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" data-focus-city="juazeiro" class="btn-secondary !py-1.5 !px-2.5 text-xs" title="Centralizar em Juazeiro - BA">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Juazeiro</span>
+            </button>
+            <button type="button" data-focus-city="petrolina" class="btn-secondary !py-1.5 !px-2.5 text-xs" title="Centralizar em Petrolina - PE">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Petrolina</span>
+            </button>
             <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
-              <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span class="label-satellite-state">Satélite</span>
+              <i data-lucide="layers" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="label-satellite-state">Modo Satélite</span>
             </button>
             <button type="button" id="btn-tower-fit-all" class="btn-secondary !py-1.5 !px-2.5 text-xs">
               <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
-              <span>Enquadrar Tudo</span>
+              <span>Enquadrar Rota</span>
             </button>
             <button type="button" id="btn-tower-toggle-3d" class="btn-secondary !py-1.5 !px-2.5 text-xs">
               <i data-lucide="box" class="w-3.5 h-3.5 text-sky-400"></i>
@@ -322,7 +330,13 @@
             </button>
           </div>
         </div>
-        <div id="map-admin-tower" class="map-viewport-hero"></div>
+        <div class="relative">
+          <div id="map-admin-tower" class="map-viewport-hero"></div>
+          <button type="button" data-toggle-satellite="all" class="absolute top-3 left-3 z-20 px-3 py-2 rounded-xl bg-slate-950/90 hover:bg-slate-900 text-emerald-300 border border-emerald-500/50 shadow-xl text-xs font-bold flex items-center gap-2 backdrop-blur-md transition">
+            <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+            <span class="label-satellite-state">Modo Satélite</span>
+          </button>
+        </div>
       </div>
 
       <!-- Painel Lateral da Torre: Resumo de Rotas Ativas e Passageiros -->
@@ -367,7 +381,7 @@
             <input type="hidden" id="route-id" />
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">Nome da Rota</label>
-              <input type="text" id="route-name" required class="input-field" placeholder="Ex: Rota 01 - Zona Sul / Sede CYMI" />
+              <input type="text" id="route-name" required class="input-field" placeholder="Ex: Rota 01 - Juazeiro / Petrolina" />
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -435,15 +449,23 @@
         <div class="flex flex-col gap-2.5 mb-2.5 px-1">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 class="text-sm font-bold text-white">Editor Visual da Rota no Mapa</h3>
+              <h3 class="text-sm font-bold text-white">Editor Visual da Rota no Mapa (Juazeiro / Petrolina)</h3>
               <p class="text-xs text-slate-400" id="route-builder-mode-hint">Modo Mover/Editar: navegue livremente ou arraste os pontos existentes sem criar paradas ao clicar.</p>
             </div>
-            <div class="flex items-center gap-2">
-              <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
-                <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
-                <span class="label-satellite-state">Satélite</span>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button type="button" data-focus-city="juazeiro" class="btn-secondary !py-1.5 !px-2.5 text-xs" title="Ir para Juazeiro - BA">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span>Juazeiro</span>
               </button>
-              <input type="text" id="route-map-search" class="input-field !py-1.5 !px-3 !text-xs w-40 sm:w-48" placeholder="Buscar rua/bairro..." />
+              <button type="button" data-focus-city="petrolina" class="btn-secondary !py-1.5 !px-2.5 text-xs" title="Ir para Petrolina - PE">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span>Petrolina</span>
+              </button>
+              <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span class="label-satellite-state">Modo Satélite</span>
+              </button>
+              <input type="text" id="route-map-search" class="input-field !py-1.5 !px-3 !text-xs w-36 sm:w-44" placeholder="Rua/bairro em Juazeiro/Petrolina..." />
               <button type="button" id="btn-route-map-search" class="btn-secondary !py-1.5 !px-2.5 text-xs">
                 <i data-lucide="search" class="w-3.5 h-3.5"></i>
               </button>
@@ -467,7 +489,13 @@
             </button>
           </div>
         </div>
-        <div id="map-route-builder" class="map-viewport-hero"></div>
+        <div class="relative">
+          <div id="map-route-builder" class="map-viewport-hero"></div>
+          <button type="button" data-toggle-satellite="all" class="absolute top-3 left-3 z-20 px-3 py-2 rounded-xl bg-slate-950/90 hover:bg-slate-900 text-emerald-300 border border-emerald-500/50 shadow-xl text-xs font-bold flex items-center gap-2 backdrop-blur-md transition">
+            <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+            <span class="label-satellite-state">Modo Satélite</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -502,7 +530,7 @@
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">Telefone / WhatsApp</label>
-              <input type="text" id="pax-phone" required class="input-field" placeholder="(11) 98888-7777" />
+              <input type="text" id="pax-phone" required class="input-field" placeholder="(74) 98888-7777" />
             </div>
           </div>
 
@@ -520,7 +548,7 @@
           <div>
             <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço Residencial Completo</label>
             <div class="flex gap-2">
-              <input type="text" id="pax-address" required class="input-field" placeholder="Rua, Número, Bairro, Cidade" />
+              <input type="text" id="pax-address" required class="input-field" placeholder="Rua, Número, Bairro, Juazeiro - BA ou Petrolina - PE" />
               <button type="button" id="btn-pax-geocode" class="btn-secondary !px-3 shrink-0 text-xs" title="Buscar Coordenadas pelo Endereço">
                 <i data-lucide="search" class="w-4 h-4 text-sky-400"></i>
                 <span>Buscar GPS</span>
@@ -532,10 +560,10 @@
           <div>
             <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
               <span>Clique no mapa para ajustar o pino exato da residência:</span>
-              <span class="font-mono text-[11px] text-sky-400"><span id="pax-lat-display">-23.5614</span>, <span id="pax-lng-display">-46.6559</span></span>
+              <span class="font-mono text-[11px] text-sky-400"><span id="pax-lat-display">-9.4112</span>, <span id="pax-lng-display">-40.5028</span></span>
             </div>
-            <input type="hidden" id="pax-lat" value="-23.5614" />
-            <input type="hidden" id="pax-lng" value="-46.6559" />
+            <input type="hidden" id="pax-lat" value="-9.4112" />
+            <input type="hidden" id="pax-lng" value="-40.5028" />
             <div id="map-pax-picker" class="w-full h-44 rounded-xl border border-slate-800 overflow-hidden"></div>
           </div>
 
