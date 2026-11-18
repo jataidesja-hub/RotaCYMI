@@ -242,9 +242,16 @@
             <i data-lucide="log-in" class="w-4 h-4"></i>
             <span>Entrar no Sistema</span>
           </button>
+
+          <div class="pt-3 border-t border-slate-800/80">
+            <button type="button" id="btn-open-self-signup" class="btn-secondary w-full py-2.5 text-xs border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">
+              <i data-lucide="user-plus" class="w-4 h-4 text-emerald-400"></i>
+              <span>Sou Funcionário Novo — Quero me Cadastrar na Rota</span>
+            </button>
+          </div>
         </form>
 
-        <div class="mt-6 pt-5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+        <div class="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
           <span>Banco Serverless Google Sheets</span>
           <button type="button" id="btn-auth-open-api" class="text-sky-400 hover:underline font-semibold flex items-center gap-1">
             <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
@@ -585,13 +592,43 @@
         </form>
       </div>
 
-      <!-- Lista de Funcionários -->
-      <div class="lg:col-span-7 card-surface p-5">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <h3 class="text-base font-bold text-white">Quadro de Funcionários e Passageiros</h3>
-          <input type="text" id="search-admin-pax" class="input-field !w-60 !py-1.5 !text-xs" placeholder="Filtrar por nome, e-mail ou rota..." />
+      <!-- Lista de Funcionários + Gerador de Link de Autocadastro -->
+      <div class="lg:col-span-7 flex flex-col gap-4">
+        <!-- Card de Link de Convite para Autocadastro dos Funcionários -->
+        <div class="card-surface p-4 border border-emerald-500/35 bg-emerald-950/15">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                <i data-lucide="share-2" class="w-4 h-4"></i>
+                <span>Link de Autocadastro para Funcionários (WhatsApp)</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                Envie este link no grupo dos colaboradores. Ao abrir, o formulário de cadastro abre automaticamente com mapa de Juazeiro/Petrolina, foto e escolha da rota.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <button type="button" id="btn-copy-signup-link" class="btn-secondary !py-2 !px-3 text-xs border-sky-500/40 text-sky-300">
+                <i data-lucide="copy" class="w-4 h-4 text-sky-400"></i>
+                <span>Copiar Link</span>
+              </button>
+              <button type="button" id="btn-whatsapp-signup-link" class="btn-emerald !py-2 !px-3.5 text-xs">
+                <i data-lucide="send" class="w-4 h-4"></i>
+                <span>Enviar no WhatsApp</span>
+              </button>
+            </div>
+          </div>
+          <div class="mt-2.5 flex items-center gap-2">
+            <input id="input-signup-share-url" type="text" readonly class="input-field !py-1.5 !px-3 !text-xs font-mono text-emerald-300 bg-slate-950/80" value="https://jataidesja-hub.github.io/RotaCYMI/?cadastro=1" />
+          </div>
         </div>
-        <div id="admin-passengers-list" class="space-y-3 max-h-[640px] overflow-y-auto pr-1"></div>
+
+        <div class="card-surface p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h3 class="text-base font-bold text-white">Quadro de Funcionários e Passageiros</h3>
+            <input type="text" id="search-admin-pax" class="input-field !w-60 !py-1.5 !text-xs" placeholder="Filtrar por nome, e-mail ou rota..." />
+          </div>
+          <div id="admin-passengers-list" class="space-y-3 max-h-[540px] overflow-y-auto pr-1"></div>
+        </div>
       </div>
     </div>
 
@@ -1081,6 +1118,116 @@
         </button>
         <button type="button" id="btn-dismiss-ios-install" class="btn-secondary !py-2 !px-4 text-xs">Entendi</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 3: AUTOCADASTRO DE FUNCIONÁRIO POR LINK DE CONVITE (?cadastro=1)
+       ======================================================================== -->
+  <div id="modal-self-signup" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+    <div class="card-surface max-w-2xl w-full p-5 sm:p-6 border border-emerald-500/40 my-auto max-h-[94vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
+            <i data-lucide="user-plus" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base sm:text-lg font-extrabold text-white">Cadastro de Funcionário — RotaCYMI</h3>
+            <p class="text-xs text-slate-400">Preencha seus dados e marque sua residência no mapa para acessar sua rota.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-self-signup" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-self-signup" class="mt-4 space-y-3.5">
+        <!-- Foto de Perfil -->
+        <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/75 border border-slate-800">
+          <img id="signup-photo-preview" src="./icons/icon.svg" alt="Foto" class="w-14 h-14 rounded-full object-cover border-2 border-emerald-400/60 bg-slate-800 shrink-0" />
+          <div class="flex-1">
+            <label class="block text-xs font-semibold text-white mb-1">Sua Foto de Identificação (Opcional)</label>
+            <input type="file" id="signup-photo-input" accept="image/*" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/20 file:text-emerald-300 hover:file:bg-emerald-500/30" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Nome Completo *</label>
+            <input type="text" id="signup-name" required class="input-field" placeholder="Digite seu nome completo" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Telefone / WhatsApp *</label>
+            <input type="text" id="signup-phone" required class="input-field" placeholder="(74) 98888-7777" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Seu E-mail (será seu login) *</label>
+            <input type="email" id="signup-email" required class="input-field" placeholder="seu.email@cymibr.com" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Crie uma Senha de Acesso *</label>
+            <input type="text" id="signup-password" required minlength="4" class="input-field" placeholder="Mínimo 4 caracteres" />
+          </div>
+        </div>
+
+        <!-- Rota e Ponto de Embarque -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Qual Rota você utiliza? *</label>
+            <select id="signup-route" required class="input-field"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Ponto de Embarque Mais Próximo</label>
+            <select id="signup-stop" class="input-field"></select>
+          </div>
+        </div>
+
+        <!-- Endereço e Localização GPS em Juazeiro / Petrolina -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço Residencial (Rua, Nº, Bairro, Cidade) *</label>
+          <div class="flex flex-wrap sm:flex-nowrap gap-2">
+            <input type="text" id="signup-address" required class="input-field flex-1" placeholder="Ex: Av. Adolfo Viana, 250, Centro, Juazeiro - BA" />
+            <button type="button" id="btn-signup-geocode" class="btn-secondary !py-2 !px-3 text-xs shrink-0">
+              <i data-lucide="search" class="w-4 h-4 text-sky-400"></i>
+              <span>Buscar Rua</span>
+            </button>
+            <button type="button" id="btn-signup-my-gps" class="btn-secondary !py-2 !px-3 text-xs border-emerald-500/40 text-emerald-300 shrink-0" title="Usar o GPS atual do seu celular">
+              <i data-lucide="locate-fixed" class="w-4 h-4 text-emerald-400"></i>
+              <span>Meu GPS Atual</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mapa Interativo para o Funcionário Marcar a Casa -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 mb-1.5">
+            <span>Toque no mapa ou arraste o pino verde para marcar sua casa:</span>
+            <div class="flex items-center gap-1.5">
+              <button type="button" data-signup-city="juazeiro" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] font-semibold">Juazeiro</button>
+              <button type="button" data-signup-city="petrolina" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold">Petrolina</button>
+              <button type="button" data-toggle-satellite="all" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold">Satélite</button>
+            </div>
+          </div>
+          <input type="hidden" id="signup-lat" value="-9.4112" />
+          <input type="hidden" id="signup-lng" value="-40.5028" />
+          <div id="map-self-signup" class="w-full h-52 rounded-xl border border-slate-800 overflow-hidden"></div>
+          <div class="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+            <span>Ao marcar sua casa, calculamos automaticamente o ponto de parada mais próximo.</span>
+            <span class="font-mono text-sky-400"><span id="signup-lat-display">-9.4112</span>, <span id="signup-lng-display">-40.5028</span></span>
+          </div>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+          <button type="button" id="btn-cancel-self-signup" class="btn-secondary !py-2.5 !px-4 text-xs">Cancelar</button>
+          <button type="submit" id="btn-submit-self-signup" class="btn-emerald !py-2.5 !px-6 text-xs sm:text-sm font-bold">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span>Concluir Meu Cadastro e Entrar</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

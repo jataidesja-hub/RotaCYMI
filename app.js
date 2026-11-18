@@ -237,6 +237,7 @@
       paxPicker: null,
       passengerLive: null,
       selfPaxHome: null,
+      selfSignup: null,
       driver3d: null
     },
 
@@ -251,10 +252,13 @@
       passengerSelf: null,
       passengerStops: [],
       selfHomeMarker: null,
+      selfSignupMarker: null,
       driverBus: null,
       driverStops: [],
       driverPax: []
     },
+
+    tempSelfSignupPhoto: '',
 
     // Estado do Construtor de Rotas
     routeDraft: {
@@ -853,6 +857,7 @@
       { map: state.maps.paxPicker, before: undefined },
       { map: state.maps.passengerLive, before: 'pax-route-line' },
       { map: state.maps.selfPaxHome, before: undefined },
+      { map: state.maps.selfSignup, before: undefined },
       { map: state.maps.driver3d, before: 'driver-route-glow' }
     ];
 
@@ -3513,6 +3518,238 @@
   }
 
   /* ==========================================================================
+   * 12.1 AUTOCADASTRO DE FUNCIONÁRIO POR LINK DE CONVITE (?cadastro=1)
+   * ========================================================================== */
+  function getPublicSignupInviteUrl() {
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?cadastro=1`;
+  }
+
+  function updateSignupShareInputUrl() {
+    const el = document.getElementById('input-signup-share-url');
+    if (el) {
+      el.value = getPublicSignupInviteUrl();
+    }
+  }
+
+  function populateSelfSignupRouteAndStops(preferredRouteId) {
+    const routeSelect = document.getElementById('signup-route');
+    const stopSelect = document.getElementById('signup-stop');
+    if (!routeSelect || !stopSelect) return;
+
+    const routes = state.db.rotas || [];
+    routeSelect.innerHTML =
+      routes
+        .map(
+          (r) =>
+            `<option value="${r.id}">${r.nome} (${r.turno || 'Turno'})</option>`
+        )
+        .join('') || `<option value="">Nenhuma rota cadastrada</option>`;
+
+    if (preferredRouteId && routes.some((r) => r.id === preferredRouteId)) {
+      routeSelect.value = preferredRouteId;
+    }
+
+    const updateStopsAndNearest = () => {
+      const selectedRoute = routes.find((r) => r.id === routeSelect.value) || routes[0];
+      const stops = selectedRoute ? getBoardingStopsOnly(selectedRoute) : [];
+      const curLat = parseFloat(document.getElementById('signup-lat')?.value) || DEFAULT_LAT;
+      const curLng = parseFloat(document.getElementById('signup-lng')?.value) || DEFAULT_LNG;
+
+      let nearestStopId = '';
+      let minDist = Infinity;
+
+      const stopsWithDist = stops.map((pt) => {
+        const d = calculateHaversineMeters(curLat, curLng, Number(pt.lat), Number(pt.lng));
+        if (d < minDist) {
+          minDist = d;
+          nearestStopId = pt.id;
+        }
+        return { ...pt, dist: d };
+      });
+
+      stopSelect.innerHTML =
+        stopsWithDist
+          .map((pt) => {
+            const distLabel = pt.dist >= 1000 ? `${(pt.dist / 1000).toFixed(1)} km` : `${pt.dist} m`;
+            return `<option value="${pt.id}">${pt.nome} (${pt.horario}) — a ${distLabel}</option>`;
+          })
+          .join('') || `<option value="">Ponto definido automaticamente pelo GPS</option>`;
+
+      if (nearestStopId) {
+        stopSelect.value = nearestStopId;
+      }
+    };
+
+    routeSelect.onchange = updateStopsAndNearest;
+    updateStopsAndNearest();
+  }
+
+  function initSelfSignupMap() {
+    const lat = parseFloat(document.getElementById('signup-lat')?.value) || DEFAULT_LAT;
+    const lng = parseFloat(document.getElementById('signup-lng')?.value) || DEFAULT_LNG;
+
+    if (state.maps.selfSignup) {
+      state.maps.selfSignup.resize();
+      ensureSatelliteLayerOnMap(state.maps.selfSignup);
+      state.maps.selfSignup.setCenter([lng, lat]);
+      if (state.markers.selfSignupMarker) {
+        state.markers.selfSignupMarker.setLngLat([lng, lat]);
+      }
+      return;
+    }
+
+    const map = new maplibregl.Map({
+      container: 'map-self-signup',
+      style: VECTOR_MAP_STYLE,
+      center: [lng, lat],
+      zoom: 14
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+    map.on('load', () => {
+      ensureSatelliteLayerOnMap(map);
+    });
+
+    const marker = new maplibregl.Marker({ color: '#10b981', draggable: true })
+      .setLngLat([lng, lat])
+      .addTo(map);
+
+    const setSignupCoords = (lngLat) => {
+      const la = Number(lngLat.lat.toFixed(6));
+      const ln = Number(lngLat.lng.toFixed(6));
+      document.getElementById('signup-lat').value = la;
+      document.getElementById('signup-lng').value = ln;
+      document.getElementById('signup-lat-display').textContent = la;
+      document.getElementById('signup-lng-display').textContent = ln;
+      populateSelfSignupRouteAndStops(document.getElementById('signup-route')?.value);
+    };
+
+    marker.on('dragend', () => setSignupCoords(marker.getLngLat()));
+    map.on('click', (e) => {
+      marker.setLngLat(e.lngLat);
+      setSignupCoords(e.lngLat);
+    });
+
+    state.maps.selfSignup = map;
+    state.markers.selfSignupMarker = marker;
+  }
+
+  function openSelfSignupModal(preferredRouteId) {
+    const modal = document.getElementById('modal-self-signup');
+    if (!modal) return;
+
+    state.tempSelfSignupPhoto = '';
+    document.getElementById('signup-photo-preview').src = './icons/icon.svg';
+    document.getElementById('signup-lat').value = DEFAULT_LAT;
+    document.getElementById('signup-lng').value = DEFAULT_LNG;
+    document.getElementById('signup-lat-display').textContent = DEFAULT_LAT;
+    document.getElementById('signup-lng-display').textContent = DEFAULT_LNG;
+
+    populateSelfSignupRouteAndStops(preferredRouteId);
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    refreshIcons();
+
+    setTimeout(() => {
+      initSelfSignupMap();
+    }, 90);
+  }
+
+  function closeSelfSignupModal() {
+    const modal = document.getElementById('modal-self-signup');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  async function handleSelfSignupSubmit(event) {
+    event.preventDefault();
+
+    const nome = document.getElementById('signup-name').value.trim();
+    const telefone = document.getElementById('signup-phone').value.trim();
+    const email = document.getElementById('signup-email').value.trim().toLowerCase();
+    const senha = document.getElementById('signup-password').value.trim();
+    const endereco = document.getElementById('signup-address').value.trim();
+    const rotaId = document.getElementById('signup-route').value || (state.db.rotas[0]?.id || '');
+    const pontoId = document.getElementById('signup-stop').value || '';
+    const lat = parseFloat(document.getElementById('signup-lat').value) || DEFAULT_LAT;
+    const lng = parseFloat(document.getElementById('signup-lng').value) || DEFAULT_LNG;
+
+    const existingUser = state.db.usuarios.find(
+      (u) => String(u.email).trim().toLowerCase() === email
+    );
+
+    const id = existingUser ? existingUser.id : `usr_pax_${Date.now()}`;
+    const record = {
+      id,
+      nome,
+      email,
+      senha,
+      perfil: 'PASSAGEIRO',
+      telefone,
+      endereco,
+      lat,
+      lng,
+      rotaId,
+      pontoId,
+      statusEmbarque: 'VOU',
+      foto: state.tempSelfSignupPhoto || (existingUser ? existingUser.foto : ''),
+      updatedAt: new Date().toISOString()
+    };
+
+    const idx = state.db.usuarios.findIndex((u) => u.id === id);
+    if (idx >= 0) {
+      state.db.usuarios[idx] = record;
+    } else {
+      state.db.usuarios.push(record);
+    }
+
+    saveLocalDb();
+    renderAdminKpiCounts();
+    renderAdminPassengersList();
+
+    showToast('Cadastro concluído! Sincronizando com a planilha e abrindo sua rota...', 'success');
+
+    // Envia imediatamente para o Google Sheets
+    await callGasApi({
+      action: 'upsertEntity',
+      sheet: 'Usuarios',
+      record
+    });
+
+    closeSelfSignupModal();
+
+    // Limpa query param ?cadastro=1 da URL sem recarregar
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Já autentica o funcionário automaticamente na tela da rota dele
+    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(record));
+    loginSuccessRedirect(record, false);
+  }
+
+  function checkInviteLinkOnStartup() {
+    updateSignupShareInputUrl();
+    const params = new URLSearchParams(window.location.search);
+    const isSignupLink =
+      params.has('cadastro') ||
+      params.get('mode') === 'cadastro' ||
+      window.location.hash.includes('cadastro');
+
+    if (isSignupLink) {
+      const preferredRouteId = params.get('rota') || '';
+      // Se estiver em link de convite, abre o modal de autocadastro imediatamente
+      openSelfSignupModal(preferredRouteId);
+      return true;
+    }
+    return false;
+  }
+
+  /* ==========================================================================
    * 13. BINDING DE EVENTOS GERAIS E INICIALIZAÇÃO
    * ========================================================================== */
   function bindEvents() {
@@ -3729,6 +3966,104 @@
 
     document.getElementById('form-passenger-profile')?.addEventListener('submit', handleSavePassengerSelfProfile);
 
+    // Autocadastro de Funcionários por Link (?cadastro=1) e Compartilhamento WhatsApp
+    document.getElementById('btn-open-self-signup')?.addEventListener('click', () => openSelfSignupModal());
+    document.getElementById('btn-close-self-signup')?.addEventListener('click', closeSelfSignupModal);
+    document.getElementById('btn-cancel-self-signup')?.addEventListener('click', closeSelfSignupModal);
+    document.getElementById('form-self-signup')?.addEventListener('submit', handleSelfSignupSubmit);
+
+    document.getElementById('signup-photo-input')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const b64 = await compressImageToBase64(file, 150, 0.72);
+      state.tempSelfSignupPhoto = b64;
+      document.getElementById('signup-photo-preview').src = b64;
+      showToast('Foto carregada e otimizada com sucesso!', 'success');
+    });
+
+    document.getElementById('btn-signup-geocode')?.addEventListener('click', async () => {
+      const addr = document.getElementById('signup-address')?.value;
+      const geo = await geocodeAddressString(addr);
+      if (geo) {
+        const la = Number(geo.lat.toFixed(6));
+        const ln = Number(geo.lng.toFixed(6));
+        document.getElementById('signup-lat').value = la;
+        document.getElementById('signup-lng').value = ln;
+        document.getElementById('signup-lat-display').textContent = la;
+        document.getElementById('signup-lng-display').textContent = ln;
+        if (state.maps.selfSignup && state.markers.selfSignupMarker) {
+          state.markers.selfSignupMarker.setLngLat([ln, la]);
+          state.maps.selfSignup.flyTo({ center: [ln, la], zoom: 16 });
+        }
+        populateSelfSignupRouteAndStops(document.getElementById('signup-route')?.value);
+        showToast('Endereço localizado no mapa!', 'success');
+      } else {
+        showToast('Endereço não encontrado. Toque diretamente na sua rua no mapa.', 'warning');
+      }
+    });
+
+    document.getElementById('btn-signup-my-gps')?.addEventListener('click', () => {
+      if (!('geolocation' in navigator)) {
+        showToast('GPS não suportado neste navegador.', 'warning');
+        return;
+      }
+      showToast('Obtendo localização GPS do seu celular...', 'info');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const la = Number(pos.coords.latitude.toFixed(6));
+          const ln = Number(pos.coords.longitude.toFixed(6));
+          document.getElementById('signup-lat').value = la;
+          document.getElementById('signup-lng').value = ln;
+          document.getElementById('signup-lat-display').textContent = la;
+          document.getElementById('signup-lng-display').textContent = ln;
+          if (state.maps.selfSignup && state.markers.selfSignupMarker) {
+            state.markers.selfSignupMarker.setLngLat([ln, la]);
+            state.maps.selfSignup.flyTo({ center: [ln, la], zoom: 16.5 });
+          }
+          populateSelfSignupRouteAndStops(document.getElementById('signup-route')?.value);
+          showToast('Sua localização GPS atual foi marcada no mapa!', 'success');
+        },
+        () => {
+          showToast('Permissão de GPS negada. Toque no mapa para marcar sua casa.', 'warning');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+
+    document.querySelectorAll('[data-signup-city]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-signup-city');
+        const city = CITY_COORDS[key] || CITY_COORDS.juazeiro;
+        if (state.maps.selfSignup) {
+          state.maps.selfSignup.flyTo({ center: [city.lng, city.lat], zoom: 14.2 });
+        }
+      });
+    });
+
+    document.getElementById('btn-copy-signup-link')?.addEventListener('click', async () => {
+      const link = getPublicSignupInviteUrl();
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast('Link de cadastro copiado! Agora é só colar no WhatsApp.', 'success');
+      } catch (e) {
+        const input = document.getElementById('input-signup-share-url');
+        if (input) {
+          input.select();
+          document.execCommand('copy');
+        }
+        showToast('Link copiado!', 'success');
+      }
+    });
+
+    document.getElementById('btn-whatsapp-signup-link')?.addEventListener('click', () => {
+      const link = getPublicSignupInviteUrl();
+      const msg =
+        `🚌 *Cadastro Transporte Corporativo — RotaCYMI*\n\n` +
+        `Olá! Acesse o link abaixo pelo celular para se cadastrar na sua rota, marcar sua residência no mapa e acompanhar o ônibus ao vivo:\n\n` +
+        `👉 ${link}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+    });
+
     // Painel do Motorista 3D
     document.getElementById('btn-driver-start-route')?.addEventListener('click', startDriverTripExecution);
     document.getElementById('btn-driver-finish-route')?.addEventListener('click', () => stopDriverTripExecution(true));
@@ -3746,12 +4081,22 @@
     setupApiConfigModal();
     bindEvents();
 
-    // Se já houver sessão salva no localStorage ("Lembrar-me"), entra direto no painel
-    checkExistingSession();
+    // Verifica se o funcionário abriu o Link de Convite de Autocadastro (?cadastro=1)
+    const openedViaInviteLink = checkInviteLinkOnStartup();
+
+    // Se não for link de cadastro e já houver sessão salva ("Lembrar-me"), entra direto no painel
+    if (!openedViaInviteLink) {
+      checkExistingSession();
+    }
 
     // Sincronização em background com Google Sheets se a URL estiver configurada
     if (state.gasUrl) {
       await syncWithGoogleSheets(false);
+      // Atualiza lista de rotas no modal de autocadastro caso esteja aberto
+      if (openedViaInviteLink) {
+        const params = new URLSearchParams(window.location.search);
+        populateSelfSignupRouteAndStops(params.get('rota') || '');
+      }
     }
 
     // Polling periódico leve (a cada 7 segundos) quando conectado ao Google Sheets
