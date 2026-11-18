@@ -695,46 +695,96 @@
         <div class="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
           <i data-lucide="bus-front" class="w-6 h-6"></i>
         </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="text-xs uppercase tracking-wider font-mono text-sky-400">Minha Rota Vinculada</span>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="pax-header-direction-label" class="text-xs uppercase tracking-wider font-mono text-sky-400">Rota de IDA (Embarque)</span>
             <span id="pax-live-route-status" class="status-pill live">EM ANDAMENTO</span>
           </div>
-          <h2 id="pax-live-route-name" class="text-lg font-extrabold text-white">Carregando rota...</h2>
+          <h2 id="pax-live-route-name" class="text-base sm:text-lg font-extrabold text-white truncate">Carregando rota...</h2>
           <p id="pax-live-vehicle-info" class="text-xs text-slate-400">Ônibus — • Motorista —</p>
         </div>
       </div>
 
       <!-- Botões Rápidos: "Vou embarcar hoje" / "Não vou utilizar hoje" -->
       <div class="flex flex-wrap items-center gap-2">
-        <button type="button" id="btn-pax-status-going" class="btn-emerald !py-2.5 !px-4 text-xs sm:text-sm">
+        <button type="button" id="btn-pax-status-going" class="btn-emerald !py-2.5 !px-4 text-xs sm:text-sm flex-1 sm:flex-initial">
           <i data-lucide="check-circle" class="w-4 h-4"></i>
-          <span>Vou embarcar hoje</span>
+          <span>Vou utilizar hoje</span>
         </button>
-        <button type="button" id="btn-pax-status-skip" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm">
+        <button type="button" id="btn-pax-status-skip" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm flex-1 sm:flex-initial">
           <i data-lucide="x-circle" class="w-4 h-4 text-rose-400"></i>
           <span>Não vou utilizar hoje</span>
         </button>
-        <button type="button" id="btn-pax-open-profile" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm">
+        <button type="button" id="btn-pax-open-profile" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm w-full sm:w-auto">
           <i data-lucide="user-cog" class="w-4 h-4 text-sky-400"></i>
           <span>Meu Perfil</span>
         </button>
       </div>
     </div>
 
-    <!-- Barra de Rota(s) Aberta(s) no Momento (IDA ou VOLTA) -->
-    <div class="card-surface p-3.5">
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-        <div class="flex items-center gap-2">
-          <i data-lucide="radar" class="w-4 h-4 text-emerald-400"></i>
-          <span class="text-xs font-bold uppercase tracking-wider text-white">Rota Aberta Agora (IDA / VOLTA) &amp; Ponto Mais Próximo</span>
+    <!-- Painel de Escolha do Usuário: ROTA DE IDA (Onde Sobe) vs ROTA DE VOLTA (Onde Desce) -->
+    <div class="card-surface p-4 border-sky-500/30">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-800/80">
+        <div>
+          <h3 class="text-xs font-extrabold uppercase tracking-wider text-white flex items-center gap-2">
+            <i data-lucide="ArrowLeftRight" class="w-4 h-4 text-sky-400"></i>
+            <span>Escolha o Turno: Rota de IDA (Onde Sobe) ou Rota de VOLTA (Onde Desce)</span>
+          </h3>
+          <p id="pax-shift-helper-text" class="text-[11px] text-slate-400 mt-0.5">
+            Na IDA você escolhe a rota e o ponto onde sobe. Na VOLTA todos sobem no mesmo local e você escolhe apenas o ponto onde desce.
+          </p>
         </div>
-        <span class="text-[11px] text-emerald-300 font-semibold" id="pax-open-routes-count-badge">Exibindo somente a rota que está aberta no momento</span>
+
+        <!-- Botões de Alternância IDA vs VOLTA -->
+        <div class="grid grid-cols-2 gap-1.5 bg-slate-900/95 p-1 rounded-xl border border-slate-700/80 shrink-0">
+          <button type="button" id="btn-pax-mode-ida" class="px-3 py-2 rounded-lg text-xs font-extrabold bg-sky-500/20 text-sky-300 border border-sky-500/40 transition flex items-center justify-center gap-1.5">
+            <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+            <span>Rota de IDA (Subida)</span>
+          </button>
+          <button type="button" id="btn-pax-mode-volta" class="px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Rota de VOLTA (Descida)</span>
+          </button>
+        </div>
       </div>
-      <div id="pax-routes-cards-container" class="grid grid-cols-1 md:grid-cols-2 gap-2.5"></div>
+
+      <!-- Aviso Especial do Turno de VOLTA (Todos sobem no mesmo canto) -->
+      <div id="pax-volta-notice-banner" class="hidden mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-start gap-2.5">
+        <i data-lucide="info" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+        <div>
+          <strong class="text-amber-300">Turno de VOLTA — Embarque Único:</strong> Na volta todos os colaboradores sobem no mesmo ponto de saída (não é necessário mostrar qual ônibus subir). Selecione abaixo apenas a sua <strong>Rota de Volta</strong> e o <strong>Ponto onde você vai DESCER</strong>.
+        </div>
+      </div>
+
+      <!-- Seletores de Rota e Ponto (Subida na IDA / Descida na VOLTA) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mt-3 items-end">
+        <div class="md:col-span-5">
+          <label id="label-pax-select-route" for="pax-select-route" class="block text-xs font-bold text-sky-300 mb-1">
+            1. Escolher Rota de IDA
+          </label>
+          <select id="pax-select-route" class="input-field !py-2 text-xs font-semibold"></select>
+        </div>
+
+        <div class="md:col-span-5">
+          <label id="label-pax-select-stop" for="pax-select-stop" class="block text-xs font-bold text-emerald-300 mb-1">
+            2. Selecionar Ponto onde você SOBE (Embarque)
+          </label>
+          <select id="pax-select-stop" class="input-field !py-2 text-xs font-semibold"></select>
+        </div>
+
+        <div class="md:col-span-2">
+          <button type="button" id="btn-pax-confirm-stop" class="btn-emerald w-full !py-2.5 !px-3 text-xs">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span id="label-pax-confirm-stop">Salvar Subida</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cards Resumo das Rotas do Turno Selecionado -->
+      <div id="pax-routes-cards-container" class="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-3"></div>
     </div>
 
-    <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Mais Próximo (Haversine) -->
+    <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Selecionado / Mais Próximo -->
     <div id="pax-tab-map" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       <!-- Mapa de Rastreamento ao Vivo -->
       <div class="lg:col-span-8 card-surface p-3">
@@ -742,43 +792,44 @@
           <div>
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
               <i data-lucide="navigation" class="w-4 h-4 text-emerald-400"></i>
-              Rastreamento ao Vivo — Rota Aberta, Sua Localização e Ponto Mais Próximo
+              <span id="pax-map-title-text">Mapa ao Vivo — Seu GPS, Trajeto e Ponto Selecionado</span>
             </h3>
-            <p class="text-xs text-slate-400">Você visualiza automaticamente a rota aberta no momento (IDA ou VOLTA) e o ponto de embarque mais próximo.</p>
+            <p class="text-xs text-slate-400">Toque em qualquer parada no mapa ou na lista ao lado para definir seu ponto de subida (IDA) ou descida (VOLTA).</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
               <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
               <span class="label-satellite-state">Satélite</span>
             </button>
-            <button type="button" id="btn-pax-locate-me" class="btn-secondary !py-1.5 !px-3 text-xs">
+            <button type="button" id="btn-pax-locate-me" class="btn-secondary !py-1.5 !px-2.5 text-xs border-sky-500/40 text-sky-300">
               <i data-lucide="crosshair" class="w-3.5 h-3.5 text-sky-400"></i>
-              <span>Meu GPS</span>
+              <span>Meu GPS Agora</span>
             </button>
-            <button type="button" id="btn-pax-focus-bus" class="btn-secondary !py-1.5 !px-3 text-xs">
-              <i data-lucide="bus" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span>Focar Ônibus</span>
+            <button type="button" id="btn-pax-focus-bus" class="btn-secondary !py-1.5 !px-2.5 text-xs border-amber-500/40 text-amber-300">
+              <i data-lucide="bus" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Focar Ônibus Real</span>
             </button>
           </div>
         </div>
         <div id="map-passenger-live" class="map-viewport-hero"></div>
       </div>
 
-      <!-- Coluna Direita: Destaque do Ponto Mais Próximo + Lista de Paradas da Rota -->
+      <!-- Coluna Direita: Destaque do Ponto de Subida (IDA) ou Descida (VOLTA) + Lista de Paradas -->
       <div class="lg:col-span-4 flex flex-col gap-4">
-        <!-- Card Haversine: Ponto Mais Próximo -->
+        <!-- Card do Ponto de Subida/Descida Selecionado e Mais Próximo -->
         <div class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/40 to-slate-900/90">
           <div class="flex items-center justify-between">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-              Ponto de Embarque Mais Próximo
+            <span id="pax-card-stop-label" class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+              <span>Meu Ponto de Subida (IDA)</span>
             </span>
             <span id="pax-nearest-eta" class="font-mono-num text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">--:--</span>
           </div>
           <h4 id="pax-nearest-name" class="text-base font-extrabold text-white mt-2">Calculando via GPS...</h4>
+          <p id="pax-nearest-suggestion" class="text-[11px] text-sky-300 mt-1"></p>
           <div class="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-emerald-500/20">
             <div>
-              <div class="text-[11px] text-slate-400">Distância até o Ponto</div>
+              <div class="text-[11px] text-slate-400">Distância até Você</div>
               <div id="pax-nearest-distance" class="text-lg font-extrabold font-mono-num text-emerald-400">-- m</div>
             </div>
             <div>
@@ -788,9 +839,11 @@
           </div>
         </div>
 
-        <!-- Todos os Pontos da Rota -->
+        <!-- Todos os Pontos da Rota (Clique para selecionar Onde Sobe ou Onde Desce) -->
         <div class="card-surface p-4">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Itinerário e Horários da Rota Aberta</h3>
+          <h3 id="pax-timeline-heading" class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">
+            Paradas da Rota — Toque para escolher onde SOBE
+          </h3>
           <div id="pax-stops-timeline" class="space-y-2.5 max-h-[380px] overflow-y-auto pr-1"></div>
         </div>
       </div>
