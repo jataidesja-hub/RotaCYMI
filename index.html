@@ -917,24 +917,34 @@
 
     <!-- Área Principal: Mapa de Navegação 3D (Pitch 65 + Bearing Dinâmico) e Lista de Paradas/Passageiros -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-      <div class="lg:col-span-8 card-surface p-3 relative">
+      <div id="driver-map-card" class="lg:col-span-8 card-surface p-3 relative">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
-          <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-xs font-bold">3D PITCH 65°</span>
-            <span class="text-xs text-slate-300">Câmera acompanha direção do GPS automaticamente</span>
-          </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+            <span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-xs font-bold">3D PITCH 65°</span>
+            <span id="driver-camera-mode-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">
+              Seguir Ônibus: ATIVO
+            </span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
               <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
               <span class="label-satellite-state">Satélite</span>
             </button>
-            <button type="button" id="btn-driver-simulate-gps" class="btn-secondary !py-1.5 !px-3 text-xs border-amber-500/40 text-amber-300" title="Simular deslocamento na via caso esteja testando no PC">
-              <i data-lucide="navigation-2" class="w-3.5 h-3.5"></i>
-              <span id="label-driver-sim">Simular Direção na Via</span>
+            <button type="button" id="btn-driver-zoom-out-route" class="btn-secondary !py-1.5 !px-2.5 text-xs border-sky-500/40 text-sky-300" title="Afastar o zoom e destravar o mapa para ver a rota inteira">
+              <i data-lucide="zoom-out" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Afastar / Ver Rota</span>
             </button>
-            <button type="button" id="btn-driver-recenter-3d" class="btn-secondary !py-1.5 !px-3 text-xs">
-              <i data-lucide="compass" class="w-3.5 h-3.5 text-sky-400"></i>
-              <span>Centralizar 3D</span>
+            <button type="button" id="btn-driver-recenter-3d" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300" title="Voltar a centralizar e seguir o ônibus em 3D">
+              <i data-lucide="locate-fixed" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Centralizar</span>
+            </button>
+            <button type="button" id="btn-driver-fullscreen" class="btn-secondary !py-1.5 !px-2.5 text-xs border-purple-500/40 text-purple-300" title="Expandir mapa do motorista em Tela Cheia">
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-purple-400"></i>
+              <span id="label-driver-fullscreen">Tela Cheia</span>
+            </button>
+            <button type="button" id="btn-driver-simulate-gps" class="btn-secondary !py-1.5 !px-2.5 text-xs border-amber-500/40 text-amber-300" title="Simular deslocamento na via caso esteja testando no PC">
+              <i data-lucide="navigation-2" class="w-3.5 h-3.5"></i>
+              <span id="label-driver-sim">Simular Direção</span>
             </button>
           </div>
         </div>

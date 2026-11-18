@@ -126,6 +126,29 @@ body {
   }
 }
 
+/* Modo Tela Cheia do Mapa do Motorista (Compatível com Desktop, Android e iOS Safari) */
+.cymi-map-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  z-index: 999 !important;
+  border-radius: 0 !important;
+  background: var(--bg-primary) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 10px !important;
+}
+
+.cymi-map-fullscreen .map-viewport-hero {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
 /* Marcadores Customizados no MapLibre GL */
 .cymi-bus-marker {
   width: 46px;

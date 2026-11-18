@@ -350,6 +350,8 @@
     driverRuntime: {
       activeRouteId: 'rota_01',
       isTripRunning: false,
+      autoFollowCamera: true,
+      isFullscreen: false,
       tripId: null,
       watchId: null,
       telemetryTimer: null,
@@ -3392,6 +3394,20 @@
     }, 60);
   }
 
+  function setDriverAutoFollowMode(enabled) {
+    state.driverRuntime.autoFollowCamera = Boolean(enabled);
+    const badge = document.getElementById('driver-camera-mode-badge');
+    if (badge) {
+      if (state.driverRuntime.autoFollowCamera) {
+        badge.className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[11px] font-bold';
+        badge.textContent = 'Seguir Ônibus: ATIVO';
+      } else {
+        badge.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-bold';
+        badge.textContent = 'Mapa Livre (Toque em Centralizar p/ seguir)';
+      }
+    }
+  }
+
   function initDriver3dMap() {
     if (state.maps.driver3d) {
       state.maps.driver3d.resize();
@@ -3410,6 +3426,27 @@
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    // Libera automaticamente o mapa (destrava o foco no ônibus) quando o motorista arrastar, afastar ou der zoom com os dedos/mouse
+    ['dragstart', 'wheel', 'touchstart', 'boxzoomstart'].forEach((evtName) => {
+      map.on(evtName, (e) => {
+        if (evtName === 'touchstart' && e.points && e.points.length < 2) {
+          // Toque simples só destrava se realmente arrastar (dragstart cuidará disso)
+          return;
+        }
+        if (e && e.originalEvent && state.driverRuntime.autoFollowCamera) {
+          setDriverAutoFollowMode(false);
+        }
+      });
+    });
+
+    // Se o motorista clicar nos botões + / - nativos do controle do mapa, também libera o zoom livre
+    const containerEl = document.getElementById('map-driver-3d');
+    containerEl?.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.closest && ev.target.closest('.maplibregl-ctrl-group')) {
+        setDriverAutoFollowMode(false);
+      }
+    });
 
     map.on('load', () => {
       map.addSource('driver-route-source', {
@@ -3628,10 +3665,10 @@
       state.markers.driverPax.push(marker);
     });
 
-    updateDriver3dBusMarkerAndCamera();
+    updateDriver3dBusMarkerAndCamera(false);
   }
 
-  function updateDriver3dBusMarkerAndCamera() {
+  function updateDriver3dBusMarkerAndCamera(forceRecenter = false) {
     const map = state.maps.driver3d;
     if (!map) return;
 
@@ -3651,16 +3688,120 @@
       state.markers.driverBus.setLngLat(lngLat);
     }
 
-    map.easeTo({
-      center: lngLat,
-      pitch: 65,
-      bearing: Number(state.driverRuntime.currentHeading || 0),
-      zoom: 16.3,
-      duration: 850
-    });
+    if (forceRecenter) {
+      setDriverAutoFollowMode(true);
+    }
+
+    // Só move/centraliza a câmera automaticamente se o modo Seguir Ônibus estiver ATIVO
+    if (forceRecenter || state.driverRuntime.autoFollowCamera) {
+      map.easeTo({
+        center: lngLat,
+        pitch: 65,
+        bearing: Number(state.driverRuntime.currentHeading || 0),
+        zoom: forceRecenter ? 16.3 : Math.max(map.getZoom(), 15.2),
+        duration: 850
+      });
+    }
 
     document.getElementById('driver-hud-speed').textContent = Math.round(state.driverRuntime.currentSpeed || 0);
     document.getElementById('driver-hud-heading').textContent = Math.round(state.driverRuntime.currentHeading || 0);
+  }
+
+  /**
+   * Destrava a câmera do motorista e afasta o zoom para visualizar a rota inteira e todas as paradas
+   */
+  function zoomOutDriverFullRoute() {
+    const map = state.maps.driver3d;
+    if (!map) return;
+
+    setDriverAutoFollowMode(false);
+
+    const rota =
+      state.db.rotas.find((r) => r.id === state.driverRuntime.activeRouteId) ||
+      state.db.rotas[0];
+
+    const bounds = new maplibregl.LngLatBounds();
+    let count = 0;
+
+    if (rota) {
+      (rota.polyline || []).forEach((coord) => {
+        if (Array.isArray(coord) && coord.length >= 2) {
+          bounds.extend([Number(coord[0]), Number(coord[1])]);
+          count++;
+        }
+      });
+      (rota.pontos || []).forEach((pt) => {
+        if (pt.lat && pt.lng) {
+          bounds.extend([Number(pt.lng), Number(pt.lat)]);
+          count++;
+        }
+      });
+    }
+
+    if (state.driverRuntime.currentLat && state.driverRuntime.currentLng) {
+      bounds.extend([Number(state.driverRuntime.currentLng), Number(state.driverRuntime.currentLat)]);
+      count++;
+    }
+
+    if (count > 1) {
+      map.fitBounds(bounds, {
+        padding: 70,
+        pitch: 30,
+        maxZoom: 14.5,
+        duration: 850
+      });
+    } else {
+      map.easeTo({
+        zoom: Math.max(map.getZoom() - 2.5, 12.5),
+        pitch: 30,
+        duration: 700
+      });
+    }
+
+    showToast('Mapa destravado e afastado! Você pode navegar livremente ou tocar em Centralizar.', 'info');
+  }
+
+  /**
+   * Reativa o foco automático 3D no ônibus
+   */
+  function recenterDriver3dCamera() {
+    updateDriver3dBusMarkerAndCamera(true);
+    showToast('Câmera 3D centralizada no ônibus (Seguir GPS ativo).', 'success');
+  }
+
+  /**
+   * Alterna Tela Cheia no Mapa 3D do Motorista (compatível com Android, iPhone/iOS e Desktop)
+   */
+  async function toggleDriverMapFullscreen() {
+    const card = document.getElementById('driver-map-card');
+    const label = document.getElementById('label-driver-fullscreen');
+    if (!card) return;
+
+    const nextState = !state.driverRuntime.isFullscreen;
+    state.driverRuntime.isFullscreen = nextState;
+
+    card.classList.toggle('cymi-map-fullscreen', nextState);
+    if (label) {
+      label.textContent = nextState ? 'Sair da Tela Cheia' : 'Tela Cheia';
+    }
+
+    // Tenta também a Fullscreen API nativa em navegadores que suportam, mantendo o fallback CSS para iOS
+    try {
+      if (nextState && card.requestFullscreen && !document.fullscreenElement) {
+        await card.requestFullscreen();
+      } else if (!nextState && document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (e) {
+      // Fallback CSS (.cymi-map-fullscreen) já garante 100vw x 100dvh
+    }
+
+    setTimeout(() => {
+      if (state.maps.driver3d) state.maps.driver3d.resize();
+    }, 60);
+    setTimeout(() => {
+      if (state.maps.driver3d) state.maps.driver3d.resize();
+    }, 260);
   }
 
   /**
@@ -4745,7 +4886,23 @@
     document.getElementById('btn-driver-start-route')?.addEventListener('click', startDriverTripExecution);
     document.getElementById('btn-driver-finish-route')?.addEventListener('click', () => stopDriverTripExecution(true));
     document.getElementById('btn-driver-simulate-gps')?.addEventListener('click', toggleDriver3dRouteSimulation);
-    document.getElementById('btn-driver-recenter-3d')?.addEventListener('click', updateDriver3dBusMarkerAndCamera);
+    document.getElementById('btn-driver-zoom-out-route')?.addEventListener('click', zoomOutDriverFullRoute);
+    document.getElementById('btn-driver-recenter-3d')?.addEventListener('click', recenterDriver3dCamera);
+    document.getElementById('btn-driver-fullscreen')?.addEventListener('click', toggleDriverMapFullscreen);
+
+    // Sincroniza saída da Tela Cheia caso o usuário pressione ESC no computador
+    document.addEventListener('fullscreenchange', () => {
+      const card = document.getElementById('driver-map-card');
+      const label = document.getElementById('label-driver-fullscreen');
+      if (!document.fullscreenElement && state.driverRuntime.isFullscreen) {
+        state.driverRuntime.isFullscreen = false;
+        card?.classList.remove('cymi-map-fullscreen');
+        if (label) label.textContent = 'Tela Cheia';
+        setTimeout(() => {
+          if (state.maps.driver3d) state.maps.driver3d.resize();
+        }, 60);
+      }
+    });
   }
 
   /* ==========================================================================
