@@ -659,6 +659,77 @@
   }
 
   /**
+   * Geocodificação Reversa (Coordenadas GPS -> Endereço formatado de Rua, Nº, Bairro, Cidade/UF)
+   * Preenche automaticamente o campo de endereço quando o funcionário clica em "Meu GPS Atual"
+   * ou toca/arrasta o pino no mapa.
+   */
+  async function reverseGeocodeCoords(lat, lng) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
+        lat
+      )}&lon=${encodeURIComponent(lng)}&addressdetails=1`;
+      const res = await fetch(url, {
+        headers: { 'Accept-Language': 'pt-BR' }
+      });
+      const data = await res.json();
+      if (!data) return null;
+
+      const addr = data.address || {};
+      const road =
+        addr.road ||
+        addr.pedestrian ||
+        addr.residential ||
+        addr.path ||
+        addr.cycleway ||
+        addr.amenity ||
+        '';
+      const houseNumber = addr.house_number || '';
+      const suburb =
+        addr.suburb ||
+        addr.neighbourhood ||
+        addr.quarter ||
+        addr.city_district ||
+        addr.village ||
+        '';
+      const city =
+        addr.city ||
+        addr.town ||
+        addr.municipality ||
+        addr.county ||
+        '';
+      const stateCode =
+        addr['ISO3166-2-lvl4']
+          ? addr['ISO3166-2-lvl4'].replace('BR-', '')
+          : addr.state || '';
+
+      const parts = [];
+      if (road) {
+        parts.push(houseNumber ? `${road}, ${houseNumber}` : road);
+      }
+      if (suburb) {
+        parts.push(suburb);
+      }
+      if (city) {
+        parts.push(stateCode ? `${city} - ${stateCode}` : city);
+      }
+
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+      if (data.display_name) {
+        return data.display_name
+          .split(',')
+          .slice(0, 4)
+          .map((s) => s.trim())
+          .join(', ');
+      }
+    } catch (err) {
+      console.warn('Erro na geocodificação reversa:', err);
+    }
+    return null;
+  }
+
+  /**
    * Compressão de foto de perfil via HTML5 <canvas> (máx 150x150px em JPEG Base64 leve)
    * para caber diretamente na célula do Google Sheets sem estourar o limite de 50.000 caracteres.
    */
@@ -2001,13 +2072,21 @@
       .setLngLat([lng, lat])
       .addTo(map);
 
-    const updateCoordsInputs = (lngLat) => {
+    const updateCoordsInputs = async (lngLat) => {
       const la = Number(lngLat.lat.toFixed(6));
       const ln = Number(lngLat.lng.toFixed(6));
       document.getElementById('pax-lat').value = la;
       document.getElementById('pax-lng').value = ln;
       document.getElementById('pax-lat-display').textContent = la;
       document.getElementById('pax-lng-display').textContent = ln;
+
+      const addrEl = document.getElementById('pax-address');
+      if (addrEl) {
+        const revAddr = await reverseGeocodeCoords(la, ln);
+        if (revAddr) {
+          addrEl.value = revAddr;
+        }
+      }
     };
 
     marker.on('dragend', () => updateCoordsInputs(marker.getLngLat()));
@@ -2721,13 +2800,21 @@
           .setLngLat([lng, lat])
           .addTo(map);
 
-        const setCoords = (lngLat) => {
+        const setCoords = async (lngLat) => {
           const la = Number(lngLat.lat.toFixed(6));
           const ln = Number(lngLat.lng.toFixed(6));
           document.getElementById('self-pax-lat').value = la;
           document.getElementById('self-pax-lng').value = ln;
           document.getElementById('self-pax-lat-label').textContent = la;
           document.getElementById('self-pax-lng-label').textContent = ln;
+
+          const addrEl = document.getElementById('self-pax-address');
+          if (addrEl) {
+            const revAddr = await reverseGeocodeCoords(la, ln);
+            if (revAddr) {
+              addrEl.value = revAddr;
+            }
+          }
         };
 
         marker.on('dragend', () => setCoords(marker.getLngLat()));
@@ -3616,7 +3703,7 @@
       .setLngLat([lng, lat])
       .addTo(map);
 
-    const setSignupCoords = (lngLat) => {
+    const setSignupCoords = async (lngLat) => {
       const la = Number(lngLat.lat.toFixed(6));
       const ln = Number(lngLat.lng.toFixed(6));
       document.getElementById('signup-lat').value = la;
@@ -3624,6 +3711,16 @@
       document.getElementById('signup-lat-display').textContent = la;
       document.getElementById('signup-lng-display').textContent = ln;
       populateSelfSignupRouteAndStops(document.getElementById('signup-route')?.value);
+
+      const addrEl = document.getElementById('signup-address');
+      if (addrEl) {
+        addrEl.placeholder = 'Buscando endereço da localização selecionada...';
+        const revAddr = await reverseGeocodeCoords(la, ln);
+        if (revAddr) {
+          addrEl.value = revAddr;
+          showToast(`Endereço preenchido: ${revAddr}`, 'success');
+        }
+      }
     };
 
     marker.on('dragend', () => setSignupCoords(marker.getLngLat()));
@@ -4007,9 +4104,13 @@
         showToast('GPS não suportado neste navegador.', 'warning');
         return;
       }
-      showToast('Obtendo localização GPS do seu celular...', 'info');
+      const addrEl = document.getElementById('signup-address');
+      if (addrEl) {
+        addrEl.placeholder = 'Obtendo GPS e preenchendo seu endereço automaticamente...';
+      }
+      showToast('Obtendo localização GPS e endereço da sua rua...', 'info');
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        async (pos) => {
           const la = Number(pos.coords.latitude.toFixed(6));
           const ln = Number(pos.coords.longitude.toFixed(6));
           document.getElementById('signup-lat').value = la;
@@ -4021,7 +4122,17 @@
             state.maps.selfSignup.flyTo({ center: [ln, la], zoom: 16.5 });
           }
           populateSelfSignupRouteAndStops(document.getElementById('signup-route')?.value);
-          showToast('Sua localização GPS atual foi marcada no mapa!', 'success');
+
+          const revAddr = await reverseGeocodeCoords(la, ln);
+          if (addrEl) {
+            addrEl.value = revAddr || `Localização GPS (${la}, ${ln})`;
+          }
+          showToast(
+            revAddr
+              ? `Endereço preenchido automaticamente: ${revAddr}`
+              : 'Sua localização GPS atual foi marcada e preenchida!',
+            'success'
+          );
         },
         () => {
           showToast('Permissão de GPS negada. Toque no mapa para marcar sua casa.', 'warning');
