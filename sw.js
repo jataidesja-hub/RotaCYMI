@@ -2,16 +2,16 @@
  * ROTA CYMI - SERVICE WORKER (PWA OFFLINE & SHELL CACHE)
  * ============================================================================ */
 
-const CACHE_NAME = 'rotacymi-pwa-v1.2.0';
+const CACHE_NAME = 'rotacymi-pwa-v1.3.0';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/manifest.json',
-  '/icons/icon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  './',
+  './index.html',
+  './style.css',
+  './app.js',
+  './manifest.json',
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -69,7 +69,7 @@ self.addEventListener('fetch', (event) => {
         return caches.match(request).then((cached) => {
           if (cached) return cached;
           if (request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match('./index.html');
           }
           return new Response('Offline', { status: 503, statusText: 'Offline' });
         });

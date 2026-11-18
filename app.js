@@ -1563,7 +1563,7 @@
     document.getElementById('pax-email').value = '';
     document.getElementById('pax-password').value = '';
     document.getElementById('pax-address').value = '';
-    document.getElementById('pax-photo-preview').src = '/icons/icon.svg';
+    document.getElementById('pax-photo-preview').src = './icons/icon.svg';
     state.tempAdminPaxPhoto = '';
   }
 
@@ -1597,7 +1597,7 @@
         return `
           <div class="p-3.5 rounded-xl bg-slate-900/85 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-              <img src="${u.foto || '/icons/icon.svg'}" alt="${u.nome}" class="w-11 h-11 rounded-full object-cover border border-sky-400/40 bg-slate-800 shrink-0" />
+              <img src="${u.foto || './icons/icon.svg'}" alt="${u.nome}" class="w-11 h-11 rounded-full object-cover border border-sky-400/40 bg-slate-800 shrink-0" />
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-bold text-white">${u.nome}</span>
@@ -1635,7 +1635,7 @@
         document.getElementById('pax-lng-display').textContent = u.lng || -46.6559;
         document.getElementById('pax-route').value = u.rotaId || '';
         updatePaxStopsDropdown(u.rotaId, u.pontoId);
-        document.getElementById('pax-photo-preview').src = u.foto || '/icons/icon.svg';
+        document.getElementById('pax-photo-preview').src = u.foto || './icons/icon.svg';
         state.tempAdminPaxPhoto = u.foto || '';
 
         if (state.maps.paxPicker && state.markers.paxPickerMarker) {
@@ -2184,7 +2184,7 @@
     document.getElementById('self-pax-lng').value = user.lng || -46.6407;
     document.getElementById('self-pax-lat-label').textContent = user.lat || -23.5754;
     document.getElementById('self-pax-lng-label').textContent = user.lng || -46.6407;
-    document.getElementById('self-pax-photo-preview').src = user.foto || '/icons/icon.svg';
+    document.getElementById('self-pax-photo-preview').src = user.foto || './icons/icon.svg';
     state.tempSelfPaxPhoto = user.foto || '';
 
     setTimeout(() => {
@@ -2402,7 +2402,7 @@
           return `
             <div class="p-2.5 rounded-xl bg-slate-900/85 border border-slate-800 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
-                <img src="${p.foto || '/icons/icon.svg'}" alt="${p.nome}" class="w-8 h-8 rounded-full object-cover border border-slate-700" />
+                <img src="${p.foto || './icons/icon.svg'}" alt="${p.nome}" class="w-8 h-8 rounded-full object-cover border border-slate-700" />
                 <div>
                   <div class="text-xs font-bold text-white">${p.nome}</div>
                   <div class="text-[11px] text-slate-400">${stopObj ? stopObj.nome : p.endereco}</div>
@@ -2832,7 +2832,7 @@
     // Registra Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
           console.warn('Service Worker registro:', err);
         });
       });

@@ -8,9 +8,9 @@
   <meta name="theme-color" content="#0EA5E9" />
 
   <!-- PWA & iOS Support -->
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
-  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RotaCYMI" />
@@ -44,7 +44,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- Estilos Customizados RotaCYMI -->
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
 
@@ -442,7 +442,7 @@
 
           <!-- Foto comprimida 150x150 Base64 -->
           <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
-            <img id="pax-photo-preview" src="/icons/icon.svg" alt="Foto" class="w-14 h-14 rounded-full object-cover border-2 border-sky-400/50 bg-slate-800" />
+            <img id="pax-photo-preview" src="./icons/icon.svg" alt="Foto" class="w-14 h-14 rounded-full object-cover border-2 border-sky-400/50 bg-slate-800" />
             <div class="flex-1">
               <label class="block text-xs font-semibold text-white mb-1">Foto de Perfil (Auto-Compressão 150x150px)</label>
               <input type="file" id="pax-photo-input" accept="image/*" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-500/20 file:text-sky-300 hover:file:bg-sky-500/30" />
@@ -748,7 +748,7 @@
 
       <form id="form-passenger-profile" class="space-y-4">
         <div class="flex items-center gap-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
-          <img id="self-pax-photo-preview" src="/icons/icon.svg" alt="Minha Foto" class="w-16 h-16 rounded-full object-cover border-2 border-sky-400" />
+          <img id="self-pax-photo-preview" src="./icons/icon.svg" alt="Minha Foto" class="w-16 h-16 rounded-full object-cover border-2 border-sky-400" />
           <div>
             <label class="block text-xs font-bold text-white mb-1">Atualizar Foto de Perfil (Câmera ou Galeria)</label>
             <input type="file" id="self-pax-photo-input" accept="image/*" class="text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-500/20 file:text-sky-300" />
@@ -956,7 +956,7 @@
     <div class="card-surface max-w-md w-full p-6 border border-sky-500/40">
       <div class="flex items-center justify-between pb-3 border-b border-slate-800">
         <div class="flex items-center gap-2.5">
-          <img src="/icons/icon.svg" alt="RotaCYMI" class="w-9 h-9 rounded-xl" />
+          <img src="./icons/icon.svg" alt="RotaCYMI" class="w-9 h-9 rounded-xl" />
           <div>
             <h3 class="text-base font-bold text-white">Instalar Aplicativo RotaCYMI</h3>
             <p class="text-xs text-slate-400">Acesso rápido em tela cheia na tela de início</p>
@@ -1006,6 +1006,6 @@
   <div id="toast-container"></div>
 
   <!-- Lógica Principal Modular da Aplicação -->
-  <script src="/app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
