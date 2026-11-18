@@ -2,7 +2,7 @@
  * ROTA CYMI - SERVICE WORKER (PWA OFFLINE & SHELL CACHE)
  * ============================================================================ */
 
-const CACHE_NAME = 'rotacymi-pwa-v1.3.0';
+const CACHE_NAME = 'rotacymi-pwa-v1.4.0';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -41,12 +41,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Nunca fazer cache das chamadas de API do Google Apps Script ou OSRM
+  // Nunca fazer cache das chamadas de API do Google Apps Script, OSRM ou tiles de satélite
   if (
     url.hostname.includes('script.google.com') ||
     url.hostname.includes('script.googleusercontent.com') ||
     url.hostname.includes('project-osrm.org') ||
-    url.hostname.includes('nominatim.openstreetmap.org')
+    url.hostname.includes('nominatim.openstreetmap.org') ||
+    url.hostname.includes('arcgisonline.com')
   ) {
     return;
   }

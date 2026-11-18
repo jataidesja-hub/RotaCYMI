@@ -218,8 +218,11 @@
   const state = {
     db: loadLocalDb(),
     currentUser: null,
+    isMasterAdminSession: false,
     gasUrl: localStorage.getItem(STORAGE_KEYS.GAS_URL) || DEFAULT_GAS_URL,
     activeAdminTab: 'tower',
+    isSatelliteMode: false,
+    builderClickMode: 'navigate', // 'navigate' | 'waypoint' | 'add_stop'
 
     // Instâncias de Mapas MapLibre GL
     maps: {
@@ -607,6 +610,121 @@
     }
   }
 
+  /**
+   * Adiciona e sincroniza a camada de imagens de Satélite de Alta Resolução (Esri World Imagery)
+   * em qualquer instância de mapa MapLibre GL, mantendo as rotas e marcadores visíveis por cima.
+   */
+  function ensureSatelliteLayerOnMap(map, beforeLayerId) {
+    if (!map) return;
+    if (!map.getSource('esri-world-satellite')) {
+      map.addSource('esri-world-satellite', {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        ],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: 'Tiles &copy; Esri — World Imagery Satellite'
+      });
+    }
+
+    if (!map.getLayer('esri-world-satellite-layer')) {
+      const layerConfig = {
+        id: 'esri-world-satellite-layer',
+        type: 'raster',
+        source: 'esri-world-satellite',
+        layout: {
+          visibility: state.isSatelliteMode ? 'visible' : 'none'
+        },
+        paint: {
+          'raster-opacity': 0.96,
+          'raster-contrast': 0.06
+        }
+      };
+
+      if (beforeLayerId && map.getLayer(beforeLayerId)) {
+        map.addLayer(layerConfig, beforeLayerId);
+      } else {
+        map.addLayer(layerConfig);
+      }
+    } else {
+      map.setLayoutProperty(
+        'esri-world-satellite-layer',
+        'visibility',
+        state.isSatelliteMode ? 'visible' : 'none'
+      );
+    }
+  }
+
+  function toggleAllMapsSatelliteMode() {
+    state.isSatelliteMode = !state.isSatelliteMode;
+
+    const mapConfigs = [
+      { map: state.maps.tower, before: 'tower-routes-glow' },
+      { map: state.maps.routeBuilder, before: 'builder-route-glow' },
+      { map: state.maps.paxPicker, before: undefined },
+      { map: state.maps.passengerLive, before: 'pax-route-line' },
+      { map: state.maps.selfPaxHome, before: undefined },
+      { map: state.maps.driver3d, before: 'driver-route-glow' }
+    ];
+
+    mapConfigs.forEach(({ map, before }) => {
+      if (map && map.isStyleLoaded()) {
+        ensureSatelliteLayerOnMap(map, before);
+      }
+    });
+
+    document.querySelectorAll('.label-satellite-state').forEach((el) => {
+      el.textContent = state.isSatelliteMode ? 'Mapa Vetorial' : 'Modo Satélite';
+    });
+
+    document.querySelectorAll('[data-toggle-satellite]').forEach((btn) => {
+      btn.classList.toggle('bg-emerald-500/20', state.isSatelliteMode);
+      btn.classList.toggle('border-emerald-400', state.isSatelliteMode);
+    });
+
+    showToast(
+      state.isSatelliteMode
+        ? 'Modo Satélite de Alta Resolução ativado em todos os mapas!'
+        : 'Modo Mapa Vetorial Tático ativado!',
+      'info'
+    );
+  }
+
+  /**
+   * Permite ao Admin alternar instantaneamente entre a Visão Admin, Motorista 3D e Passageiro
+   * sem precisar encerrar a sessão.
+   */
+  function switchAdminPreviewMode(targetRole) {
+    if (!state.currentUser) return;
+
+    document.querySelectorAll('[data-switch-view]').forEach((btn) => {
+      const isTarget = btn.getAttribute('data-switch-view') === targetRole;
+      btn.className = isTarget
+        ? 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition'
+        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition';
+    });
+
+    document.getElementById('view-auth').classList.add('hidden');
+    document.getElementById('view-admin').classList.add('hidden');
+    document.getElementById('view-passenger').classList.add('hidden');
+    document.getElementById('view-driver').classList.add('hidden');
+
+    document.getElementById('header-user-role').textContent = targetRole;
+
+    if (targetRole === 'ADMIN') {
+      document.getElementById('view-admin').classList.remove('hidden');
+      initAdminModule();
+    } else if (targetRole === 'MOTORISTA') {
+      document.getElementById('view-driver').classList.remove('hidden');
+      initDriverModule();
+    } else if (targetRole === 'PASSAGEIRO') {
+      document.getElementById('view-passenger').classList.remove('hidden');
+      initPassengerModule();
+    }
+    refreshIcons();
+  }
+
   /* ==========================================================================
    * 6. AUTENTICAÇÃO E PERSISTÊNCIA DE SESSÃO ("LEMBRAR-ME")
    * ========================================================================== */
@@ -707,17 +825,29 @@
 
   function loginSuccessRedirect(user, notify = true) {
     state.currentUser = user;
+    state.isMasterAdminSession = user.perfil === 'ADMIN';
 
     // Atualiza Header Global
     const userBox = document.getElementById('header-user-box');
     const nameEl = document.getElementById('header-user-name');
     const roleEl = document.getElementById('header-user-role');
     const avatarEl = document.getElementById('header-user-avatar');
+    const switcherEl = document.getElementById('admin-view-switcher');
 
     userBox.classList.remove('hidden');
     userBox.classList.add('flex');
     nameEl.textContent = user.nome || user.email;
     roleEl.textContent = user.perfil;
+
+    if (switcherEl) {
+      if (state.isMasterAdminSession) {
+        switcherEl.classList.remove('hidden');
+        switcherEl.classList.add('flex');
+      } else {
+        switcherEl.classList.add('hidden');
+        switcherEl.classList.remove('flex');
+      }
+    }
 
     if (user.foto) {
       avatarEl.src = user.foto;
@@ -754,8 +884,10 @@
     stopDriverTripExecution(false);
     localStorage.removeItem(STORAGE_KEYS.SESSION);
     state.currentUser = null;
+    state.isMasterAdminSession = false;
 
     document.getElementById('header-user-box').classList.add('hidden');
+    document.getElementById('admin-view-switcher')?.classList.add('hidden');
     document.getElementById('view-admin').classList.add('hidden');
     document.getElementById('view-passenger').classList.add('hidden');
     document.getElementById('view-driver').classList.add('hidden');
@@ -867,15 +999,21 @@
     }
   }
 
+  function getBoardingStopsOnly(rota) {
+    if (!rota || !Array.isArray(rota.pontos)) return [];
+    return rota.pontos.filter((pt) => pt.tipo !== 'WAYPOINT');
+  }
+
   function updatePaxStopsDropdown(rotaId, selectedStopId = '') {
     const stopSel = document.getElementById('pax-stop');
     if (!stopSel) return;
     const rota = state.db.rotas.find((r) => r.id === rotaId) || state.db.rotas[0];
-    if (!rota || !Array.isArray(rota.pontos)) {
+    const boardingStops = getBoardingStopsOnly(rota);
+    if (boardingStops.length === 0) {
       stopSel.innerHTML = '<option value="">Sem pontos cadastrados</option>';
       return;
     }
-    stopSel.innerHTML = rota.pontos
+    stopSel.innerHTML = boardingStops
       .map(
         (pt) =>
           `<option value="${pt.id}" ${pt.id === selectedStopId ? 'selected' : ''}>${pt.horario} — ${pt.nome}</option>`
@@ -889,6 +1027,7 @@
   function initAdminTowerMap() {
     if (state.maps.tower) {
       state.maps.tower.resize();
+      ensureSatelliteLayerOnMap(state.maps.tower, 'tower-routes-glow');
       return;
     }
 
@@ -934,6 +1073,7 @@
         }
       });
 
+      ensureSatelliteLayerOnMap(map, 'tower-routes-glow');
       renderTowerMapAndSidebar();
     });
 
@@ -1033,9 +1173,9 @@
     state.markers.towerStops = [];
     state.markers.towerPax = [];
 
-    // Adiciona Pontos de Parada na Torre
+    // Adiciona apenas Pontos de Parada reais (ignora pontos de desvio WAYPOINT) na Torre
     routes.forEach((r) => {
-      (r.pontos || []).forEach((pt, idx) => {
+      getBoardingStopsOnly(r).forEach((pt, idx) => {
         const el = document.createElement('div');
         el.className = 'cymi-stop-marker';
         el.innerHTML = `
@@ -1129,11 +1269,75 @@
   }
 
   /* --------------------------------------------------------------------------
-   * 7.2 CONSTRUTOR VISUAL DE ROTAS NO MAPA (DEMARCAÇÃO + ARRASTE + OSRM)
+   * 7.2 CONSTRUTOR VISUAL DE ROTAS NO MAPA (MODOS DE EDIÇÃO + DESVIOS + OSRM)
    * -------------------------------------------------------------------------- */
+  function setRouteBuilderClickMode(mode) {
+    state.builderClickMode = mode;
+
+    document.querySelectorAll('[data-builder-mode]').forEach((btn) => {
+      const m = btn.getAttribute('data-builder-mode');
+      const isSelected = m === mode;
+      if (m === 'navigate') {
+        btn.className = isSelected
+          ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 flex items-center gap-1.5 transition'
+          : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 border border-transparent flex items-center gap-1.5 transition';
+      } else if (m === 'waypoint') {
+        btn.className = isSelected
+          ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 transition'
+          : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:bg-amber-500/15 border border-transparent flex items-center gap-1.5 transition';
+      } else if (m === 'add_stop') {
+        btn.className = isSelected
+          ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 transition'
+          : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:bg-emerald-500/15 border border-transparent flex items-center gap-1.5 transition';
+      }
+    });
+
+    const hintEl = document.getElementById('route-builder-mode-hint');
+    if (hintEl) {
+      if (mode === 'navigate') {
+        hintEl.textContent =
+          'Modo Mover/Ajustar: navegue pelo mapa, altere dados da rota ou arraste os pinos existentes sem criar novas paradas ao clicar.';
+      } else if (mode === 'waypoint') {
+        hintEl.textContent =
+          'Modo Desvio de Rua (Sem Parada): clique em qualquer rua para forçar o ônibus a passar por ela sem criar parada de embarque.';
+      } else {
+        hintEl.textContent =
+          'Modo Nova Parada: clique em qualquer local do mapa para adicionar um novo Ponto de Embarque com horário.';
+      }
+    }
+  }
+
+  /**
+   * Encontra o melhor índice para inserir um ponto de desvio (Waypoint) entre os pontos existentes
+   * com base na menor distância geométrica aos segmentos da rota.
+   */
+  function findBestInsertionIndexForWaypoint(lat, lng, points) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return points ? points.length : 0;
+    }
+
+    let bestIndex = points.length - 1;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const dA = calculateHaversineMeters(lat, lng, Number(a.lat), Number(a.lng));
+      const dB = calculateHaversineMeters(lat, lng, Number(b.lat), Number(b.lng));
+      const dAB = calculateHaversineMeters(Number(a.lat), Number(a.lng), Number(b.lat), Number(b.lng));
+      const detour = dA + dB - dAB;
+      if (detour < bestScore) {
+        bestScore = detour;
+        bestIndex = i + 1;
+      }
+    }
+    return bestIndex;
+  }
+
   function initRouteBuilderMap() {
     if (state.maps.routeBuilder) {
       state.maps.routeBuilder.resize();
+      ensureSatelliteLayerOnMap(state.maps.routeBuilder, 'builder-route-glow');
       return;
     }
 
@@ -1180,23 +1384,52 @@
         }
       });
 
+      ensureSatelliteLayerOnMap(map, 'builder-route-glow');
       renderRouteBuilderStopsAndPolyline();
     });
 
-    // Clique interativo no mapa para adicionar novo Ponto de Parada
+    // Clique no mapa respeita o modo selecionado pelo usuário
     map.on('click', async (e) => {
-      const newStopIndex = state.routeDraft.pontos.length + 1;
-      const defaultHour = `${String(6 + Math.floor(newStopIndex / 4)).padStart(2, '0')}:${String((newStopIndex * 10) % 60).padStart(2, '0')}`;
+      if (state.builderClickMode === 'navigate') {
+        // Modo padrão: permite navegar, dar zoom e arrastar pontos existentes sem adicionar parada acidentalmente
+        return;
+      }
+
+      const lat = Number(e.lngLat.lat.toFixed(6));
+      const lng = Number(e.lngLat.lng.toFixed(6));
+
+      if (state.builderClickMode === 'waypoint') {
+        const insertIdx = findBestInsertionIndexForWaypoint(lat, lng, state.routeDraft.pontos);
+        const wpNode = {
+          id: `wp_${Date.now()}`,
+          nome: 'Desvio de Trajeto (Via)',
+          horario: '',
+          tipo: 'WAYPOINT',
+          lat,
+          lng
+        };
+        state.routeDraft.pontos.splice(insertIdx, 0, wpNode);
+        await recalculateBuilderOsrm();
+        renderRouteBuilderStopsAndPolyline();
+        showToast('Ponto de desvio de rua inserido! Arraste a bolinha amarela para ajustar a via.', 'info');
+        return;
+      }
+
+      // Modo 'add_stop': adiciona nova Parada de Embarque
+      const boardingCount = state.routeDraft.pontos.filter((p) => p.tipo !== 'WAYPOINT').length + 1;
+      const defaultHour = `${String(6 + Math.floor(boardingCount / 4)).padStart(2, '0')}:${String((boardingCount * 10) % 60).padStart(2, '0')}`;
       state.routeDraft.pontos.push({
-        id: `pto_${Date.now()}_${newStopIndex}`,
-        nome: `Ponto ${newStopIndex} — Parada Embarque`,
+        id: `pto_${Date.now()}_${boardingCount}`,
+        nome: `Ponto ${boardingCount} — Parada Embarque`,
         horario: defaultHour,
-        lat: Number(e.lngLat.lat.toFixed(6)),
-        lng: Number(e.lngLat.lng.toFixed(6))
+        tipo: 'PARADA',
+        lat,
+        lng
       });
 
       await recalculateBuilderOsrm();
       renderRouteBuilderStopsAndPolyline();
+      showToast(`Parada #${boardingCount} adicionada à rota!`, 'success');
     });
 
     state.maps.routeBuilder = map;
@@ -1222,25 +1455,48 @@
 
   function renderRouteBuilderStopsAndPolyline() {
     const stopsContainer = document.getElementById('route-stops-container');
+    let stopCounter = 0;
+
     if (stopsContainer) {
       if (state.routeDraft.pontos.length === 0) {
         stopsContainer.innerHTML = `
           <div class="p-3 rounded-xl bg-slate-900/60 border border-dashed border-slate-700 text-xs text-slate-400 text-center">
-            Clique no mapa ao lado para adicionar os Pontos de Parada da rota.
+            Selecione <strong>"+ Adicionar Parada"</strong> acima do mapa ou edite uma rota existente.
           </div>
         `;
       } else {
         stopsContainer.innerHTML = state.routeDraft.pontos
-          .map(
-            (pt, idx) => `
-            <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2">
-              <span class="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
-              <input type="text" data-stop-name="${idx}" value="${pt.nome}" class="input-field !py-1 !px-2 !text-xs flex-1" placeholder="Nome do ponto" />
-              <input type="time" data-stop-time="${idx}" value="${pt.horario || '06:30'}" class="input-field !py-1 !px-2 !text-xs !w-24 font-mono" />
-              <button type="button" data-stop-remove="${idx}" class="text-rose-400 hover:text-rose-300 px-1.5" title="Remover Ponto">✕</button>
-            </div>
-          `
-          )
+          .map((pt, idx) => {
+            const isWaypoint = pt.tipo === 'WAYPOINT';
+            if (!isWaypoint) stopCounter += 1;
+
+            if (isWaypoint) {
+              return `
+                <div class="p-2 rounded-xl bg-amber-950/25 border border-dashed border-amber-500/40 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold">VIA / DESVIO</span>
+                    <input type="text" data-stop-name="${idx}" value="${pt.nome || 'Desvio de Rua'}" class="input-field !py-1 !px-2 !text-xs flex-1" />
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" data-stop-up="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Subir na ordem">↑</button>
+                    <button type="button" data-stop-down="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Descer na ordem">↓</button>
+                    <button type="button" data-stop-remove="${idx}" class="text-rose-400 hover:text-rose-300 px-1.5 text-xs" title="Remover Desvio">✕</button>
+                  </div>
+                </div>
+              `;
+            }
+
+            return `
+              <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">${stopCounter}</span>
+                <input type="text" data-stop-name="${idx}" value="${pt.nome}" class="input-field !py-1 !px-2 !text-xs flex-1" placeholder="Nome do ponto" />
+                <input type="time" data-stop-time="${idx}" value="${pt.horario || '06:30'}" class="input-field !py-1 !px-2 !text-xs !w-24 font-mono" />
+                <button type="button" data-stop-up="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Subir">↑</button>
+                <button type="button" data-stop-down="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Descer">↓</button>
+                <button type="button" data-stop-remove="${idx}" class="text-rose-400 hover:text-rose-300 px-1.5" title="Remover Ponto">✕</button>
+              </div>
+            `;
+          })
           .join('');
 
         stopsContainer.querySelectorAll('[data-stop-name]').forEach((inp) => {
@@ -1257,6 +1513,32 @@
             const idx = Number(inp.getAttribute('data-stop-time'));
             if (state.routeDraft.pontos[idx]) {
               state.routeDraft.pontos[idx].horario = ev.target.value;
+              renderRouteBuilderStopsAndPolyline();
+            }
+          });
+        });
+
+        stopsContainer.querySelectorAll('[data-stop-up]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const idx = Number(btn.getAttribute('data-stop-up'));
+            if (idx > 0) {
+              const temp = state.routeDraft.pontos[idx - 1];
+              state.routeDraft.pontos[idx - 1] = state.routeDraft.pontos[idx];
+              state.routeDraft.pontos[idx] = temp;
+              await recalculateBuilderOsrm();
+              renderRouteBuilderStopsAndPolyline();
+            }
+          });
+        });
+
+        stopsContainer.querySelectorAll('[data-stop-down]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const idx = Number(btn.getAttribute('data-stop-down'));
+            if (idx < state.routeDraft.pontos.length - 1) {
+              const temp = state.routeDraft.pontos[idx + 1];
+              state.routeDraft.pontos[idx + 1] = state.routeDraft.pontos[idx];
+              state.routeDraft.pontos[idx] = temp;
+              await recalculateBuilderOsrm();
               renderRouteBuilderStopsAndPolyline();
             }
           });
@@ -1288,20 +1570,34 @@
       });
     }
 
-    // Recria marcadores arrastáveis (Draggable) para ajuste fino
+    // Recria marcadores arrastáveis (Draggable) para Paradas e Desvios de Trajeto
     state.markers.builderStops.forEach((m) => m.remove());
     state.markers.builderStops = [];
 
+    let markerStopNum = 0;
     state.routeDraft.pontos.forEach((pt, idx) => {
+      const isWaypoint = pt.tipo === 'WAYPOINT';
+      if (!isWaypoint) markerStopNum += 1;
+
       const el = document.createElement('div');
-      el.className = 'cymi-stop-marker';
-      el.innerHTML = `
-        <div class="cymi-stop-badge">
-          <span>#${idx + 1}</span>
-          <span class="text-emerald-400 font-mono">${pt.horario || '--:--'}</span>
-        </div>
-        <div class="cymi-stop-pin"></div>
-      `;
+      if (isWaypoint) {
+        el.className = 'cymi-waypoint-marker';
+        el.innerHTML = `
+          <div class="cymi-waypoint-badge">
+            <span>Desvio Rua</span>
+          </div>
+          <div class="cymi-waypoint-dot"></div>
+        `;
+      } else {
+        el.className = 'cymi-stop-marker';
+        el.innerHTML = `
+          <div class="cymi-stop-badge">
+            <span>#${markerStopNum}</span>
+            <span class="text-emerald-400 font-mono">${pt.horario || '--:--'}</span>
+          </div>
+          <div class="cymi-stop-pin"></div>
+        `;
+      }
 
       const marker = new maplibregl.Marker({
         element: el,
@@ -1342,6 +1638,9 @@
       duracaoMin: r.duracaoMin || 0
     };
 
+    // Ao carregar uma rota existente, entra em modo "navigate" para permitir editar sem criar paradas acidentais
+    setRouteBuilderClickMode('navigate');
+
     document.getElementById('route-metric-km').textContent = `${state.routeDraft.distanciaKm} km`;
     document.getElementById('route-metric-min').textContent = `${state.routeDraft.duracaoMin} min`;
 
@@ -1365,6 +1664,7 @@
       distanciaKm: 0,
       duracaoMin: 0
     };
+    setRouteBuilderClickMode('add_stop');
     document.getElementById('route-metric-km').textContent = '0.0 km';
     document.getElementById('route-metric-min').textContent = '0 min';
     renderRouteBuilderStopsAndPolyline();
@@ -1372,21 +1672,20 @@
 
   async function handleSaveRouteBuilder(event) {
     event.preventDefault();
-    if (state.routeDraft.pontos.length < 2) {
-      showToast('Adicione pelo menos 2 Pontos de Parada no mapa para traçar a rota.', 'warning');
-      return;
+    if (state.routeDraft.pontos.length >= 2) {
+      await recalculateBuilderOsrm();
     }
 
-    await recalculateBuilderOsrm();
-
     const routeId = document.getElementById('route-id').value || `rota_${Date.now()}`;
+    const existingRoute = state.db.rotas.find((r) => r.id === routeId);
+
     const routeObj = {
       id: routeId,
       nome: document.getElementById('route-name').value.trim(),
       turno: document.getElementById('route-shift').value,
       veiculoId: document.getElementById('route-vehicle').value,
       motoristaId: document.getElementById('route-driver').value,
-      status: 'EM_ANDAMENTO',
+      status: existingRoute ? existingRoute.status : 'EM_ANDAMENTO',
       pontos: state.routeDraft.pontos,
       polyline: state.routeDraft.polyline,
       distanciaKm: state.routeDraft.distanciaKm,
@@ -1421,7 +1720,7 @@
     saveLocalDb();
     populateAdminSelectDropdowns();
     renderSavedRoutesListAdmin();
-    showToast(`Rota "${routeObj.nome}" salva e traçada via OSRM!`, 'success');
+    showToast(`Rota "${routeObj.nome}" atualizada e salva com sucesso!`, 'success');
 
     await callGasApi({
       action: 'upsertEntity',
@@ -1438,12 +1737,14 @@
       .map((r) => {
         const veh = state.db.veiculos.find((v) => v.id === r.veiculoId);
         const drv = state.db.motoristas.find((m) => m.id === r.motoristaId);
+        const stopsCount = getBoardingStopsOnly(r).length;
+        const waypointsCount = (r.pontos || []).filter((p) => p.tipo === 'WAYPOINT').length;
         return `
           <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
             <div>
               <div class="text-xs font-bold text-white">${r.nome}</div>
               <div class="text-[11px] text-slate-400">
-                ${r.turno} • ${(r.pontos || []).length} paradas • ${r.distanciaKm || 0} km • ${veh ? veh.prefixo : ''} (${drv ? drv.nome : ''})
+                ${r.turno} • ${stopsCount} paradas${waypointsCount > 0 ? ` (+${waypointsCount} desvios)` : ''} • ${r.distanciaKm || 0} km • ${veh ? veh.prefixo : ''} (${drv ? drv.nome : ''})
               </div>
             </div>
             <div class="flex items-center gap-1.5">
@@ -1477,6 +1778,7 @@
   function initAdminPaxPickerMap() {
     if (state.maps.paxPicker) {
       state.maps.paxPicker.resize();
+      ensureSatelliteLayerOnMap(state.maps.paxPicker);
       return;
     }
 
@@ -1488,6 +1790,10 @@
       style: VECTOR_MAP_STYLE,
       center: [lng, lat],
       zoom: 14
+    });
+
+    map.on('load', () => {
+      ensureSatelliteLayerOnMap(map);
     });
 
     const marker = new maplibregl.Marker({ color: '#10b981', draggable: true })
@@ -1896,6 +2202,7 @@
   function initPassengerLiveMap() {
     if (state.maps.passengerLive) {
       state.maps.passengerLive.resize();
+      ensureSatelliteLayerOnMap(state.maps.passengerLive, 'pax-route-line');
       return;
     }
 
@@ -1947,6 +2254,7 @@
         }
       });
 
+      ensureSatelliteLayerOnMap(map, 'pax-route-line');
       renderPassengerLiveView();
     });
 
@@ -2000,7 +2308,8 @@
     let nearestStop = null;
     let minDistanceMeters = Infinity;
 
-    const stopsWithDist = (rota.pontos || []).map((pt, idx) => {
+    const boardingStops = getBoardingStopsOnly(rota);
+    const stopsWithDist = boardingStops.map((pt, idx) => {
       const dist = calculateHaversineMeters(userLat, userLng, Number(pt.lat), Number(pt.lng));
       if (dist < minDistanceMeters) {
         minDistanceMeters = dist;
@@ -2199,6 +2508,10 @@
           zoom: 14.5
         });
 
+        map.on('load', () => {
+          ensureSatelliteLayerOnMap(map);
+        });
+
         const marker = new maplibregl.Marker({ color: '#0ea5e9', draggable: true })
           .setLngLat([lng, lat])
           .addTo(map);
@@ -2222,6 +2535,7 @@
         state.markers.selfHomeMarker = marker;
       } else {
         state.maps.selfPaxHome.resize();
+        ensureSatelliteLayerOnMap(state.maps.selfPaxHome);
         state.markers.selfHomeMarker.setLngLat([lng, lat]);
         state.maps.selfPaxHome.setCenter([lng, lat]);
       }
@@ -2298,6 +2612,7 @@
   function initDriver3dMap() {
     if (state.maps.driver3d) {
       state.maps.driver3d.resize();
+      ensureSatelliteLayerOnMap(state.maps.driver3d, 'driver-route-glow');
       return;
     }
 
@@ -2343,6 +2658,7 @@
         }
       });
 
+      ensureSatelliteLayerOnMap(map, 'driver-route-glow');
       renderDriverCockpitView();
     });
 
@@ -2370,10 +2686,12 @@
     document.getElementById('driver-hud-heading').textContent = Math.round(state.driverRuntime.currentHeading || 0);
     document.getElementById('driver-hud-pax-count').textContent = `${goingPassengers.length}/${passengers.length}`;
 
+    const boardingStops = getBoardingStopsOnly(rota);
+
     // Renderiza Lista de Pontos de Parada
     const stopsEl = document.getElementById('driver-stops-list');
     if (stopsEl) {
-      stopsEl.innerHTML = (rota.pontos || [])
+      stopsEl.innerHTML = boardingStops
         .map((pt, idx) => {
           const paxAtStop = goingPassengers.filter((p) => p.pontoId === pt.id).length;
           return `
@@ -2398,7 +2716,7 @@
       paxEl.innerHTML = passengers
         .map((p) => {
           const isGoing = p.statusEmbarque !== 'NAO_VOU';
-          const stopObj = (rota.pontos || []).find((pt) => pt.id === p.pontoId);
+          const stopObj = boardingStops.find((pt) => pt.id === p.pontoId);
           return `
             <div class="p-2.5 rounded-xl bg-slate-900/85 border border-slate-800 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
@@ -2430,7 +2748,7 @@
     state.markers.driverStops.forEach((m) => m.remove());
     state.markers.driverStops = [];
 
-    (rota.pontos || []).forEach((pt, idx) => {
+    boardingStops.forEach((pt, idx) => {
       const el = document.createElement('div');
       el.className = 'cymi-stop-marker';
       el.innerHTML = `
@@ -3029,6 +3347,19 @@
     // Sincronizar Agora
     document.getElementById('btn-sync-now')?.addEventListener('click', () => syncWithGoogleSheets(true));
 
+    // Alternar Modo Satélite em todos os mapas
+    document.querySelectorAll('[data-toggle-satellite]').forEach((btn) => {
+      btn.addEventListener('click', toggleAllMapsSatelliteMode);
+    });
+
+    // Alternador Rápido de Telas para o Administrador (Admin <-> Motorista 3D <-> Passageiro)
+    document.querySelectorAll('[data-switch-view]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetRole = btn.getAttribute('data-switch-view');
+        switchAdminPreviewMode(targetRole);
+      });
+    });
+
     // Sub-Abas do Admin
     document.querySelectorAll('[data-admin-tab]').forEach((btn) => {
       btn.addEventListener('click', () => switchAdminTab(btn.getAttribute('data-admin-tab')));
@@ -3048,7 +3379,14 @@
       state.maps.tower.easeTo({ pitch: nextPitch, duration: 600 });
     });
 
-    // Construtor de Rotas
+    // Construtor de Rotas & Modos de Clique no Mapa (Editar sem adicionar parada / Desviar Rua / Adicionar Parada)
+    document.querySelectorAll('[data-builder-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-builder-mode');
+        setRouteBuilderClickMode(mode);
+      });
+    });
+
     document.getElementById('form-route-builder')?.addEventListener('submit', handleSaveRouteBuilder);
     document.getElementById('btn-route-clear-form')?.addEventListener('click', resetRouteBuilderForm);
     document.getElementById('btn-recalc-osrm')?.addEventListener('click', async () => {

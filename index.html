@@ -74,10 +74,29 @@
 
       <!-- Ações Globais Direita -->
       <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Alternador Rápido de Visão para o Admin Master (Admin / Motorista 3D / Passageiro) -->
+        <div id="admin-view-switcher" class="hidden items-center bg-slate-900/90 border border-slate-700/80 rounded-xl p-1 gap-1">
+          <button type="button" data-switch-view="ADMIN" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition">
+            Admin
+          </button>
+          <button type="button" data-switch-view="MOTORISTA" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition">
+            Motorista 3D
+          </button>
+          <button type="button" data-switch-view="PASSAGEIRO" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition">
+            Passageiro
+          </button>
+        </div>
+
+        <!-- Botão Global de Modo Satélite / Mapa Vetorial -->
+        <button id="btn-global-satellite" type="button" data-toggle-satellite="all" class="btn-secondary !py-2 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Alternar todos os mapas entre Satélite Real e Mapa Escuro">
+          <i data-lucide="satellite" class="w-4 h-4 text-emerald-400"></i>
+          <span class="label-satellite-state">Modo Satélite</span>
+        </button>
+
         <!-- Botão Inteligente Instalar App (Android / iOS / PWA) -->
         <button id="btn-pwa-install" type="button" class="btn-secondary !py-2 !px-3 text-xs border-sky-500/40 text-sky-300" title="Instalar Aplicativo no Celular">
           <i data-lucide="smartphone-charging" class="w-4 h-4 text-sky-400"></i>
-          <span id="label-pwa-install">Instalar App</span>
+          <span id="label-pwa-install" class="hidden sm:inline">Instalar App</span>
         </button>
 
         <!-- Botão de Sincronização Manual -->
@@ -288,7 +307,11 @@
             </h2>
             <p class="text-xs text-slate-400">Ônibus ativos, velocidade GPS, rotas OSRM e colaboradores aguardando nos pontos.</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
+              <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="label-satellite-state">Satélite</span>
+            </button>
             <button type="button" id="btn-tower-fit-all" class="btn-secondary !py-1.5 !px-2.5 text-xs">
               <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
               <span>Enquadrar Tudo</span>
@@ -379,10 +402,10 @@
               </div>
             </div>
 
-            <!-- Lista de Pontos de Parada Demarcados -->
+            <!-- Lista de Pontos de Parada e Desvios de Trajeto -->
             <div>
               <div class="flex items-center justify-between mb-1.5">
-                <label class="text-xs font-semibold text-slate-300">Pontos de Parada (Clique no mapa ou adicione abaixo)</label>
+                <label class="text-xs font-semibold text-slate-300">Paradas &amp; Desvios de Rua</label>
                 <button type="button" id="btn-recalc-osrm" class="text-xs text-sky-400 hover:underline flex items-center gap-1">
                   <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                   Recalcular Trajeto OSRM
@@ -394,7 +417,7 @@
             <div class="flex items-center gap-2 pt-2">
               <button type="submit" class="btn-primary flex-1">
                 <i data-lucide="save" class="w-4 h-4"></i>
-                <span>Salvar Rota Completa</span>
+                <span>Salvar Alterações da Rota</span>
               </button>
             </div>
           </form>
@@ -409,15 +432,38 @@
 
       <!-- Mapa Interativo do Construtor de Rotas -->
       <div class="lg:col-span-7 card-surface p-3">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
-          <div>
-            <h3 class="text-sm font-bold text-white">Demarcação Interativa no Mapa (Arraste os pontos para ajuste fino)</h3>
-            <p class="text-xs text-slate-400">Clique em qualquer rua do mapa para adicionar um novo Ponto de Parada e traçar a rota via OSRM.</p>
+        <div class="flex flex-col gap-2.5 mb-2.5 px-1">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-white">Editor Visual da Rota no Mapa</h3>
+              <p class="text-xs text-slate-400" id="route-builder-mode-hint">Modo Mover/Editar: navegue livremente ou arraste os pontos existentes sem criar paradas ao clicar.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
+                <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span class="label-satellite-state">Satélite</span>
+              </button>
+              <input type="text" id="route-map-search" class="input-field !py-1.5 !px-3 !text-xs w-40 sm:w-48" placeholder="Buscar rua/bairro..." />
+              <button type="button" id="btn-route-map-search" class="btn-secondary !py-1.5 !px-2.5 text-xs">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <input type="text" id="route-map-search" class="input-field !py-1.5 !px-3 !text-xs w-48" placeholder="Buscar endereço/bairro..." />
-            <button type="button" id="btn-route-map-search" class="btn-secondary !py-1.5 !px-2.5 text-xs">
-              <i data-lucide="search" class="w-3.5 h-3.5"></i>
+
+          <!-- Seletor de Modo de Clique no Mapa: Editar Sem Adicionar Parada vs Desvio de Rua vs Nova Parada -->
+          <div class="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-900/95 border border-slate-800">
+            <span class="text-[11px] font-semibold text-slate-400 px-2">Ação ao clicar no mapa:</span>
+            <button type="button" data-builder-mode="navigate" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 flex items-center gap-1.5 transition">
+              <i data-lucide="hand" class="w-3.5 h-3.5"></i>
+              <span>Apenas Mover / Ajustar Existentes</span>
+            </button>
+            <button type="button" data-builder-mode="waypoint" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:bg-amber-500/15 border border-transparent flex items-center gap-1.5 transition" title="Muda a rua por onde o ônibus passa sem criar ponto de embarque para passageiros">
+              <i data-lucide="git-branch" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Desviar Trajeto na Rua (Sem Parada)</span>
+            </button>
+            <button type="button" data-builder-mode="add_stop" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:bg-emerald-500/15 border border-transparent flex items-center gap-1.5 transition">
+              <i data-lucide="map-pin-plus" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>+ Adicionar Parada de Embarque</span>
             </button>
           </div>
         </div>
@@ -687,7 +733,11 @@
             </h3>
             <p class="text-xs text-slate-400">Linha tracejada verde conecta você automaticamente ao ponto de embarque mais próximo (Fórmula de Haversine).</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+              <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="label-satellite-state">Satélite</span>
+            </button>
             <button type="button" id="btn-pax-locate-me" class="btn-secondary !py-1.5 !px-3 text-xs">
               <i data-lucide="crosshair" class="w-3.5 h-3.5 text-sky-400"></i>
               <span>Meu GPS</span>
@@ -862,7 +912,11 @@
             <span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-xs font-bold">3D PITCH 65°</span>
             <span class="text-xs text-slate-300">Câmera acompanha direção do GPS automaticamente</span>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+              <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="label-satellite-state">Satélite</span>
+            </button>
             <button type="button" id="btn-driver-simulate-gps" class="btn-secondary !py-1.5 !px-3 text-xs border-amber-500/40 text-amber-300" title="Simular deslocamento na via caso esteja testando no PC">
               <i data-lucide="navigation-2" class="w-3.5 h-3.5"></i>
               <span id="label-driver-sim">Simular Direção na Via</span>

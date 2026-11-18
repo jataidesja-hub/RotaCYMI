@@ -220,6 +220,39 @@ body {
   height: 18px;
 }
 
+/* Marcador de Ponto de Desvio / Ajuste de Trajeto (Sem Parada) */
+.cymi-waypoint-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: grab;
+}
+
+.cymi-waypoint-badge {
+  background: rgba(15, 23, 42, 0.92);
+  color: #fbbf24;
+  border: 1.5px dashed #f59e0b;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cymi-waypoint-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2.5px solid #ffffff;
+  margin-top: 2px;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+}
+
 /* Marcador de Passageiro / Residência */
 .cymi-user-marker {
   width: 34px;
