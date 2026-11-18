@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>RotaCYMI — Gestão e Rastreamento de Transporte Corporativo em Tempo Real</title>
+  <meta name="description" content="Plataforma PWA Corporativa de Gestão de Frota, Rotas OSRM e Rastreamento GPS 2D/3D em Tempo Real integrada ao Google Sheets." />
+  <meta name="theme-color" content="#0EA5E9" />
+
+  <!-- PWA & iOS Support -->
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RotaCYMI" />
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- MapLibre GL JS (Gratuito, 2D & 3D Pitch/Bearing) -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Estilos Customizados RotaCYMI -->
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+  <!-- ========================================================================
+       BARRA SUPERIOR GLOBAL (CABEÇALHO + STATUS + INSTALADOR PWA + CONFIG API)
+       ======================================================================== -->
+  <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Identidade Visual -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 p-[2px] shadow-lg shadow-sky-500/20">
+          <div class="w-full h-full bg-[#090d16] rounded-[10px] flex items-center justify-center">
+            <i data-lucide="bus" class="w-5 h-5 text-sky-400"></i>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white">Rota<span class="text-sky-400">CYMI</span></h1>
+            <span id="badge-connection-mode" class="status-pill live text-[11px]">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span id="text-connection-mode">Tempo Real</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Gestão e Rastreamento Corporativo de Frotas 2D/3D</p>
+        </div>
+      </div>
+
+      <!-- Ações Globais Direita -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Botão Inteligente Instalar App (Android / iOS / PWA) -->
+        <button id="btn-pwa-install" type="button" class="btn-secondary !py-2 !px-3 text-xs border-sky-500/40 text-sky-300" title="Instalar Aplicativo no Celular">
+          <i data-lucide="smartphone-charging" class="w-4 h-4 text-sky-400"></i>
+          <span id="label-pwa-install">Instalar App</span>
+        </button>
+
+        <!-- Botão de Sincronização Manual -->
+        <button id="btn-sync-now" type="button" class="btn-secondary !py-2 !px-3 text-xs" title="Sincronizar com Google Sheets">
+          <i data-lucide="refresh-cw" id="icon-sync-spin" class="w-4 h-4 text-emerald-400"></i>
+          <span class="hidden md:inline">Sincronizar</span>
+        </button>
+
+        <!-- Botão Discreto de Configuração da URL do Google Apps Script -->
+        <button id="btn-open-api-config" type="button" class="btn-secondary !py-2 !px-3 text-xs" title="Configurar URL da Planilha Google Apps Script">
+          <i data-lucide="database" class="w-4 h-4 text-amber-400"></i>
+          <span class="hidden lg:inline">API Sheets</span>
+        </button>
+
+        <!-- Perfil do Usuário Logado + Sair -->
+        <div id="header-user-box" class="hidden items-center gap-2 pl-2 border-l border-slate-800">
+          <img id="header-user-avatar" src="" alt="Foto" class="w-8 h-8 rounded-full object-cover border border-sky-400/50 hidden" />
+          <div class="text-right hidden sm:block">
+            <div id="header-user-name" class="text-xs font-bold text-white leading-tight">Usuário</div>
+            <div id="header-user-role" class="text-[10px] font-mono uppercase tracking-wider text-sky-400">ADMIN</div>
+          </div>
+          <button id="btn-logout" type="button" class="btn-secondary !py-2 !px-2.5 text-xs text-rose-400 hover:border-rose-500/50" title="Encerrar Sessão">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       TELA DE AUTENTICAÇÃO (LOGIN + ACESSO RÁPIDO + LEMBRAR-ME)
+       ======================================================================== -->
+  <main id="view-auth" class="flex-1 flex items-center justify-center p-4 sm:p-6">
+    <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      
+      <!-- Coluna Esquerda: Apresentação Operacional -->
+      <div class="lg:col-span-6 card-surface p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-semibold mb-4">
+            <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+            Telemetria GPS &amp; Rotas OSRM em Tempo Real
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
+            Controle total do transporte corporativo <span class="text-sky-400">CYMI</span>.
+          </h2>
+          <p class="text-sm text-slate-300 mt-3 leading-relaxed">
+            Acompanhe ônibus ao vivo no mapa, localize o ponto de embarque mais próximo via Haversine, navegue em 3D no painel do motorista e gerencie toda a operação integrada gratuitamente ao Google Sheets.
+          </p>
+
+          <div class="mt-6 space-y-3">
+            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+              <div class="p-2 rounded-lg bg-sky-500/15 text-sky-400">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-white">1. Torre de Controle (ADMIN)</h3>
+                <p class="text-xs text-slate-400">CRUD de passageiros, frota, motoristas, construtor visual de rotas OSRM e monitoramento global.</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+              <div class="p-2 rounded-lg bg-emerald-500/15 text-emerald-400">
+                <i data-lucide="map-pin" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-white">2. App do Colaborador (PASSAGEIRO)</h3>
+                <p class="text-xs text-slate-400">Ônibus ao vivo, cálculo de distância em metros até o ponto mais próximo e confirmação rápida de embarque.</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+              <div class="p-2 rounded-lg bg-amber-500/15 text-amber-400">
+                <i data-lucide="compass" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-white">3. Cockpit 3D (MOTORISTA)</h3>
+                <p class="text-xs text-slate-400">Câmera em perspectiva 3D (<code class="text-amber-300">pitch: 65</code>), Wake Lock ativo e envio contínuo de telemetria GPS.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preenchimento Rápido de Credenciais para Teste Imediato -->
+        <div class="mt-6 pt-5 border-t border-slate-800/80">
+          <p class="text-xs font-semibold text-slate-400 mb-2.5">Acesso Rápido (Credencial Master &amp; Perfis de Demonstração):</p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button type="button" data-quick-login="admin" class="btn-secondary !py-2 !px-3 text-xs justify-start">
+              <i data-lucide="key-round" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
+              <div class="text-left truncate">
+                <div class="font-bold text-white">Admin Master</div>
+                <div class="text-[10px] text-slate-400 truncate">jasantos@cymibr.com</div>
+              </div>
+            </button>
+            <button type="button" data-quick-login="driver" class="btn-secondary !py-2 !px-3 text-xs justify-start">
+              <i data-lucide="steering-wheel" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+              <div class="text-left truncate">
+                <div class="font-bold text-white">Motorista 3D</div>
+                <div class="text-[10px] text-slate-400 truncate">carlos.mot@cymibr.com</div>
+              </div>
+            </button>
+            <button type="button" data-quick-login="passenger" class="btn-secondary !py-2 !px-3 text-xs justify-start">
+              <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+              <div class="text-left truncate">
+                <div class="font-bold text-white">Passageiro</div>
+                <div class="text-[10px] text-slate-400 truncate">mariana.silva@cymibr.com</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coluna Direita: Formulário de Login -->
+      <div class="lg:col-span-6 card-surface p-6 sm:p-8 flex flex-col justify-center">
+        <div class="mb-6">
+          <h2 class="text-xl font-bold text-white">Acessar Plataforma</h2>
+          <p class="text-xs text-slate-400 mt-1">Entre com seu e-mail corporativo e senha para abrir seu painel.</p>
+        </div>
+
+        <form id="form-login" class="space-y-4">
+          <div>
+            <label for="login-email" class="block text-xs font-semibold text-slate-300 mb-1.5">E-mail Corporativo</label>
+            <input id="login-email" type="email" required class="input-field" placeholder="ex: jasantos@cymibr.com" value="jasantos@cymibr.com" />
+          </div>
+
+          <div>
+            <label for="login-password" class="block text-xs font-semibold text-slate-300 mb-1.5">Senha de Acesso</label>
+            <div class="relative">
+              <input id="login-password" type="password" required class="input-field pr-10" placeholder="••••••••" value="Sabre0858" />
+              <button type="button" id="btn-toggle-login-pass" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-1">
+            <label class="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+              <input id="login-remember" type="checkbox" checked class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500" />
+              <span>Lembrar minha sessão neste dispositivo</span>
+            </label>
+          </div>
+
+          <button type="submit" id="btn-submit-login" class="btn-primary w-full py-3 text-sm mt-2">
+            <i data-lucide="log-in" class="w-4 h-4"></i>
+            <span>Entrar no Sistema</span>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <span>Banco Serverless Google Sheets</span>
+          <button type="button" id="btn-auth-open-api" class="text-sky-400 hover:underline font-semibold flex items-center gap-1">
+            <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
+            Configurar URL do Apps Script
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ========================================================================
+       MÓDULO 1: PAINEL ADMINISTRATIVO (ADMIN)
+       ======================================================================== -->
+  <section id="view-admin" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-4 gap-4">
+    
+    <!-- Barra de Navegação das Sub-Abas do Admin + KPIs Rápidos -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 card-surface p-3">
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+        <button type="button" data-admin-tab="tower" class="nav-tab active">
+          <i data-lucide="radar" class="w-4 h-4"></i>
+          <span>Torre de Controle (Ao Vivo)</span>
+        </button>
+        <button type="button" data-admin-tab="routes" class="nav-tab">
+          <i data-lucide="route" class="w-4 h-4"></i>
+          <span>Construtor de Rotas</span>
+        </button>
+        <button type="button" data-admin-tab="passengers" class="nav-tab">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>Funcionários (<span id="kpi-count-passengers">0</span>)</span>
+        </button>
+        <button type="button" data-admin-tab="fleet" class="nav-tab">
+          <i data-lucide="bus" class="w-4 h-4"></i>
+          <span>Frota (<span id="kpi-count-fleet">0</span>)</span>
+        </button>
+        <button type="button" data-admin-tab="drivers" class="nav-tab">
+          <i data-lucide="id-card" class="w-4 h-4"></i>
+          <span>Motoristas (<span id="kpi-count-drivers">0</span>)</span>
+        </button>
+      </div>
+
+      <!-- Simulador de Telemetria para Testes da Torre de Controle -->
+      <div class="flex items-center gap-2 shrink-0">
+        <button type="button" id="btn-toggle-demo-sim" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300">
+          <i data-lucide="play" class="w-3.5 h-3.5"></i>
+          <span id="label-demo-sim">Simular Ônibus em Movimento</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- SUB-ABA 1.1: TORRE DE CONTROLE (MAPA DE MONITORAMENTO GERAL) -->
+    <div id="admin-panel-tower" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <!-- Mapa Principal da Torre -->
+      <div class="lg:col-span-8 card-surface p-3 relative">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
+          <div>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="globe" class="w-4 h-4 text-sky-400"></i>
+              Mapa de Monitoramento Geral — Frota e Passageiros em Tempo Real
+            </h2>
+            <p class="text-xs text-slate-400">Ônibus ativos, velocidade GPS, rotas OSRM e colaboradores aguardando nos pontos.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-tower-fit-all" class="btn-secondary !py-1.5 !px-2.5 text-xs">
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+              <span>Enquadrar Tudo</span>
+            </button>
+            <button type="button" id="btn-tower-toggle-3d" class="btn-secondary !py-1.5 !px-2.5 text-xs">
+              <i data-lucide="box" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Visão 3D</span>
+            </button>
+          </div>
+        </div>
+        <div id="map-admin-tower" class="map-viewport-hero"></div>
+      </div>
+
+      <!-- Painel Lateral da Torre: Resumo de Rotas Ativas e Passageiros -->
+      <div class="lg:col-span-4 flex flex-col gap-4">
+        <!-- KPIs Operacionais -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="card-surface p-3.5">
+            <div class="text-xs text-slate-400">Ônibus em Operação</div>
+            <div id="tower-kpi-active-buses" class="text-2xl font-extrabold font-mono-num text-emerald-400 mt-1">0</div>
+          </div>
+          <div class="card-surface p-3.5">
+            <div class="text-xs text-slate-400">Vão Embarcar Hoje</div>
+            <div id="tower-kpi-waiting-pax" class="text-2xl font-extrabold font-mono-num text-sky-400 mt-1">0</div>
+          </div>
+        </div>
+
+        <!-- Lista de Rotas e Telemetria ao Vivo -->
+        <div class="card-surface p-4 flex flex-col gap-3 max-h-[540px] overflow-y-auto">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Status das Rotas e Veículos</h3>
+            <span class="text-[11px] text-slate-400 font-mono" id="tower-last-update">Atualizado agora</span>
+          </div>
+          <div id="tower-routes-list" class="space-y-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUB-ABA 1.2: CONSTRUTOR VISUAL DE ROTAS NO MAPA (OSRM) -->
+    <div id="admin-panel-routes" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <!-- Formulário e Lista de Pontos -->
+      <div class="lg:col-span-5 flex flex-col gap-4">
+        <div class="card-surface p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="waypoints" class="w-4 h-4 text-sky-400"></i>
+              <span id="route-form-title">Nova Rota Corporativa</span>
+            </h2>
+            <button type="button" id="btn-route-clear-form" class="text-xs text-slate-400 hover:text-white">Limpar / Nova</button>
+          </div>
+
+          <form id="form-route-builder" class="space-y-3">
+            <input type="hidden" id="route-id" />
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Nome da Rota</label>
+              <input type="text" id="route-name" required class="input-field" placeholder="Ex: Rota 01 - Zona Sul / Sede CYMI" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Turno</label>
+                <select id="route-shift" class="input-field">
+                  <option value="Manhã">Manhã</option>
+                  <option value="Tarde">Tarde</option>
+                  <option value="Noite">Noite</option>
+                  <option value="Administrativo">Administrativo</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Ônibus Vinculado</label>
+                <select id="route-vehicle" class="input-field"></select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Motorista</label>
+                <select id="route-driver" class="input-field"></select>
+              </div>
+            </div>
+
+            <!-- Resumo de Distância e Tempo OSRM -->
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+              <div>
+                <span class="text-slate-400">Extensão via Rua (OSRM):</span>
+                <strong id="route-metric-km" class="text-sky-400 font-mono-num ml-1">0.0 km</strong>
+              </div>
+              <div>
+                <span class="text-slate-400">Tempo Estimado:</span>
+                <strong id="route-metric-min" class="text-emerald-400 font-mono-num ml-1">0 min</strong>
+              </div>
+            </div>
+
+            <!-- Lista de Pontos de Parada Demarcados -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold text-slate-300">Pontos de Parada (Clique no mapa ou adicione abaixo)</label>
+                <button type="button" id="btn-recalc-osrm" class="text-xs text-sky-400 hover:underline flex items-center gap-1">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  Recalcular Trajeto OSRM
+                </button>
+              </div>
+              <div id="route-stops-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-2">
+              <button type="submit" class="btn-primary flex-1">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Salvar Rota Completa</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lista de Rotas Cadastradas -->
+        <div class="card-surface p-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Rotas Cadastradas</h3>
+          <div id="admin-routes-saved-list" class="space-y-2.5"></div>
+        </div>
+      </div>
+
+      <!-- Mapa Interativo do Construtor de Rotas -->
+      <div class="lg:col-span-7 card-surface p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+          <div>
+            <h3 class="text-sm font-bold text-white">Demarcação Interativa no Mapa (Arraste os pontos para ajuste fino)</h3>
+            <p class="text-xs text-slate-400">Clique em qualquer rua do mapa para adicionar um novo Ponto de Parada e traçar a rota via OSRM.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="route-map-search" class="input-field !py-1.5 !px-3 !text-xs w-48" placeholder="Buscar endereço/bairro..." />
+            <button type="button" id="btn-route-map-search" class="btn-secondary !py-1.5 !px-2.5 text-xs">
+              <i data-lucide="search" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+        <div id="map-route-builder" class="map-viewport-hero"></div>
+      </div>
+    </div>
+
+    <!-- SUB-ABA 1.3: GESTÃO DE FUNCIONÁRIOS / PASSAGEIROS -->
+    <div id="admin-panel-passengers" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <!-- Formulário CRUD Passageiro -->
+      <div class="lg:col-span-5 card-surface p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="user-plus" class="w-4 h-4 text-sky-400"></i>
+            <span id="pax-form-title">Cadastrar Funcionário (Passageiro)</span>
+          </h2>
+          <button type="button" id="btn-pax-reset" class="text-xs text-slate-400 hover:text-white">Novo</button>
+        </div>
+
+        <form id="form-admin-passenger" class="space-y-3">
+          <input type="hidden" id="pax-id" />
+
+          <!-- Foto comprimida 150x150 Base64 -->
+          <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <img id="pax-photo-preview" src="/icons/icon.svg" alt="Foto" class="w-14 h-14 rounded-full object-cover border-2 border-sky-400/50 bg-slate-800" />
+            <div class="flex-1">
+              <label class="block text-xs font-semibold text-white mb-1">Foto de Perfil (Auto-Compressão 150x150px)</label>
+              <input type="file" id="pax-photo-input" accept="image/*" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-500/20 file:text-sky-300 hover:file:bg-sky-500/30" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Nome Completo</label>
+              <input type="text" id="pax-name" required class="input-field" placeholder="Nome do colaborador" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Telefone / WhatsApp</label>
+              <input type="text" id="pax-phone" required class="input-field" placeholder="(11) 98888-7777" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">E-mail de Login</label>
+              <input type="email" id="pax-email" required class="input-field" placeholder="colaborador@cymibr.com" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Senha de Acesso</label>
+              <input type="text" id="pax-password" required class="input-field" placeholder="Senha inicial" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço Residencial Completo</label>
+            <div class="flex gap-2">
+              <input type="text" id="pax-address" required class="input-field" placeholder="Rua, Número, Bairro, Cidade" />
+              <button type="button" id="btn-pax-geocode" class="btn-secondary !px-3 shrink-0 text-xs" title="Buscar Coordenadas pelo Endereço">
+                <i data-lucide="search" class="w-4 h-4 text-sky-400"></i>
+                <span>Buscar GPS</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Mini Mapa para clicar e definir a residência do funcionário -->
+          <div>
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span>Clique no mapa para ajustar o pino exato da residência:</span>
+              <span class="font-mono text-[11px] text-sky-400"><span id="pax-lat-display">-23.5614</span>, <span id="pax-lng-display">-46.6559</span></span>
+            </div>
+            <input type="hidden" id="pax-lat" value="-23.5614" />
+            <input type="hidden" id="pax-lng" value="-46.6559" />
+            <div id="map-pax-picker" class="w-full h-44 rounded-xl border border-slate-800 overflow-hidden"></div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Rota Vinculada</label>
+              <select id="pax-route" class="input-field"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Ponto de Embarque Padrão</label>
+              <select id="pax-stop" class="input-field"></select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary w-full mt-2">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span>Salvar Funcionário</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Lista de Funcionários -->
+      <div class="lg:col-span-7 card-surface p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 class="text-base font-bold text-white">Quadro de Funcionários e Passageiros</h3>
+          <input type="text" id="search-admin-pax" class="input-field !w-60 !py-1.5 !text-xs" placeholder="Filtrar por nome, e-mail ou rota..." />
+        </div>
+        <div id="admin-passengers-list" class="space-y-3 max-h-[640px] overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+
+    <!-- SUB-ABA 1.4: GESTÃO DE ÔNIBUS (FROTA) -->
+    <div id="admin-panel-fleet" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div class="lg:col-span-4 card-surface p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="bus" class="w-4 h-4 text-sky-400"></i>
+            <span id="fleet-form-title">Cadastrar Ônibus / Veículo</span>
+          </h2>
+          <button type="button" id="btn-fleet-reset" class="text-xs text-slate-400 hover:text-white">Novo</button>
+        </div>
+
+        <form id="form-admin-fleet" class="space-y-3">
+          <input type="hidden" id="fleet-id" />
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Placa (Mercosul)</label>
+              <input type="text" id="fleet-plate" required class="input-field uppercase font-mono" placeholder="CYM-2026" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Prefixo / Nº</label>
+              <input type="text" id="fleet-prefix" required class="input-field font-mono" placeholder=" Ônibus 101" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Modelo do Veículo</label>
+            <input type="text" id="fleet-model" required class="input-field" placeholder="Ex: Marcopolo Viaggio G7 / Mercedes-Benz" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Capacidade (Lugares)</label>
+              <input type="number" id="fleet-capacity" required min="1" max="120" class="input-field font-mono" value="44" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Status Operacional</label>
+              <select id="fleet-status" class="input-field">
+                <option value="Ativo">Ativo</option>
+                <option value="Em Manutenção">Em Manutenção</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary w-full mt-2">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Salvar Veículo</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="lg:col-span-8 card-surface p-5">
+        <h3 class="text-base font-bold text-white mb-4">Frota Corporativa CYMI</h3>
+        <div id="admin-fleet-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+      </div>
+    </div>
+
+    <!-- SUB-ABA 1.5: GESTÃO DE MOTORISTAS -->
+    <div id="admin-panel-drivers" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div class="lg:col-span-4 card-surface p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="id-card" class="w-4 h-4 text-amber-400"></i>
+            <span id="driver-form-title">Cadastrar Motorista</span>
+          </h2>
+          <button type="button" id="btn-driver-reset" class="text-xs text-slate-400 hover:text-white">Novo</button>
+        </div>
+
+        <form id="form-admin-driver" class="space-y-3">
+          <input type="hidden" id="driver-id" />
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Nome Completo</label>
+            <input type="text" id="driver-name" required class="input-field" placeholder="Ex: Carlos Eduardo Mendes" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">CPF / Matrícula</label>
+              <input type="text" id="driver-cpf" required class="input-field font-mono" placeholder="284.910.448-12" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">CNH (Categoria D/E)</label>
+              <input type="text" id="driver-cnh" required class="input-field font-mono" placeholder="04918273611 - Cat D" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Telefone / WhatsApp</label>
+            <input type="text" id="driver-phone" required class="input-field" placeholder="(11) 97777-6655" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">E-mail de Acesso</label>
+              <input type="email" id="driver-email" required class="input-field" placeholder="carlos.mot@cymibr.com" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Senha do Painel</label>
+              <input type="text" id="driver-password" required class="input-field" placeholder="Senha do motorista" />
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary w-full mt-2">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Salvar Motorista</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="lg:col-span-8 card-surface p-5">
+        <h3 class="text-base font-bold text-white mb-4">Motoristas Credenciados</h3>
+        <div id="admin-drivers-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ========================================================================
+       MÓDULO 2: TELA DO USUÁRIO / FUNCIONÁRIO (PASSAGEIRO)
+       ======================================================================== -->
+  <section id="view-passenger" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-4 gap-4">
+    
+    <!-- Barra Superior do Passageiro: Status Rápido de Embarque + Alternador Mapa / Meu Perfil -->
+    <div class="card-surface p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+          <i data-lucide="bus-front" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs uppercase tracking-wider font-mono text-sky-400">Minha Rota Vinculada</span>
+            <span id="pax-live-route-status" class="status-pill live">EM ANDAMENTO</span>
+          </div>
+          <h2 id="pax-live-route-name" class="text-lg font-extrabold text-white">Carregando rota...</h2>
+          <p id="pax-live-vehicle-info" class="text-xs text-slate-400">Ônibus — • Motorista —</p>
+        </div>
+      </div>
+
+      <!-- Botões Rápidos: "Vou embarcar hoje" / "Não vou utilizar hoje" -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" id="btn-pax-status-going" class="btn-emerald !py-2.5 !px-4 text-xs sm:text-sm">
+          <i data-lucide="check-circle" class="w-4 h-4"></i>
+          <span>Vou embarcar hoje</span>
+        </button>
+        <button type="button" id="btn-pax-status-skip" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm">
+          <i data-lucide="x-circle" class="w-4 h-4 text-rose-400"></i>
+          <span>Não vou utilizar hoje</span>
+        </button>
+        <button type="button" id="btn-pax-open-profile" class="btn-secondary !py-2.5 !px-4 text-xs sm:text-sm">
+          <i data-lucide="user-cog" class="w-4 h-4 text-sky-400"></i>
+          <span>Meu Perfil</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Mais Próximo (Haversine) -->
+    <div id="pax-tab-map" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <!-- Mapa de Rastreamento ao Vivo -->
+      <div class="lg:col-span-8 card-surface p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="navigation" class="w-4 h-4 text-emerald-400"></i>
+              Rastreamento ao Vivo — Ônibus, Sua Localização e Ponto Mais Próximo
+            </h3>
+            <p class="text-xs text-slate-400">Linha tracejada verde conecta você automaticamente ao ponto de embarque mais próximo (Fórmula de Haversine).</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-pax-locate-me" class="btn-secondary !py-1.5 !px-3 text-xs">
+              <i data-lucide="crosshair" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Meu GPS</span>
+            </button>
+            <button type="button" id="btn-pax-focus-bus" class="btn-secondary !py-1.5 !px-3 text-xs">
+              <i data-lucide="bus" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Focar Ônibus</span>
+            </button>
+          </div>
+        </div>
+        <div id="map-passenger-live" class="map-viewport-hero"></div>
+      </div>
+
+      <!-- Coluna Direita: Destaque do Ponto Mais Próximo + Lista de Paradas da Rota -->
+      <div class="lg:col-span-4 flex flex-col gap-4">
+        <!-- Card Haversine: Ponto Mais Próximo -->
+        <div class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/40 to-slate-900/90">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              Ponto de Embarque Mais Próximo
+            </span>
+            <span id="pax-nearest-eta" class="font-mono-num text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">--:--</span>
+          </div>
+          <h4 id="pax-nearest-name" class="text-base font-extrabold text-white mt-2">Calculando via GPS...</h4>
+          <div class="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-emerald-500/20">
+            <div>
+              <div class="text-[11px] text-slate-400">Distância até o Ponto</div>
+              <div id="pax-nearest-distance" class="text-lg font-extrabold font-mono-num text-emerald-400">-- m</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400">Velocidade do Ônibus</div>
+              <div id="pax-bus-speed" class="text-lg font-extrabold font-mono-num text-sky-400">0 km/h</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Todos os Pontos da Rota -->
+        <div class="card-surface p-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Itinerário e Horários da Rota</h3>
+          <div id="pax-stops-timeline" class="space-y-2.5 max-h-[380px] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal / Aba Meu Perfil do Funcionário -->
+    <div id="pax-tab-profile" class="hidden card-surface p-6 max-w-3xl mx-auto w-full">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h3 class="text-lg font-bold text-white">Meu Perfil e Localização Residencial</h3>
+          <p class="text-xs text-slate-400">Atualize seus dados, foto 150x150px e o pino exato da sua residência no mapa.</p>
+        </div>
+        <button type="button" id="btn-pax-close-profile" class="btn-secondary !py-1.5 !px-3 text-xs">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          <span>Voltar ao Mapa ao Vivo</span>
+        </button>
+      </div>
+
+      <form id="form-passenger-profile" class="space-y-4">
+        <div class="flex items-center gap-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+          <img id="self-pax-photo-preview" src="/icons/icon.svg" alt="Minha Foto" class="w-16 h-16 rounded-full object-cover border-2 border-sky-400" />
+          <div>
+            <label class="block text-xs font-bold text-white mb-1">Atualizar Foto de Perfil (Câmera ou Galeria)</label>
+            <input type="file" id="self-pax-photo-input" accept="image/*" class="text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-500/20 file:text-sky-300" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Nome</label>
+            <input type="text" id="self-pax-name" required class="input-field" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Telefone / WhatsApp</label>
+            <input type="text" id="self-pax-phone" required class="input-field" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço Residencial</label>
+            <div class="flex gap-2">
+              <input type="text" id="self-pax-address" required class="input-field" />
+              <button type="button" id="btn-self-pax-geocode" class="btn-secondary !px-3 text-xs shrink-0">Buscar</button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Alterar Senha</label>
+            <input type="text" id="self-pax-password" required class="input-field" />
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Toque no mapa para marcar a localização exata da sua casa:</span>
+            <span class="font-mono text-sky-400"><span id="self-pax-lat-label">0</span>, <span id="self-pax-lng-label">0</span></span>
+          </div>
+          <input type="hidden" id="self-pax-lat" />
+          <input type="hidden" id="self-pax-lng" />
+          <div id="map-self-pax-home" class="w-full h-56 rounded-xl border border-slate-800 overflow-hidden"></div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="submit" class="btn-primary">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Salvar Alterações no Perfil</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </section>
+
+  <!-- ========================================================================
+       MÓDULO 3: TELA DO MOTORISTA (COCKPIT NAVEGAÇÃO 3D + WAKE LOCK + TELEMETRIA)
+       ======================================================================== -->
+  <section id="view-driver" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-3 gap-3">
+    
+    <!-- HUD Superior de Telemetria e Controles de Viagem -->
+    <div class="card-surface p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-sky-500/30">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
+          <i data-lucide="compass" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="driver-hud-status" class="status-pill idle">AGUARDANDO INÍCIO</span>
+            <span id="driver-wakelock-badge" class="status-pill idle text-[11px]">
+              <i data-lucide="sun" class="w-3 h-3"></i>
+              <span id="driver-wakelock-text">Wake Lock Inativo</span>
+            </span>
+          </div>
+          <h2 id="driver-route-title" class="text-lg font-extrabold text-white mt-0.5">Rota Vinculada</h2>
+          <p id="driver-vehicle-subtitle" class="text-xs text-slate-400">Veículo • Turno</p>
+        </div>
+      </div>
+
+      <!-- Métricas de Velocidade, Rumo (Heading) e Passageiros Aguardando -->
+      <div class="grid grid-cols-3 gap-2 sm:gap-3">
+        <div class="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+          <div class="text-[10px] uppercase text-slate-400">Velocidade</div>
+          <div class="text-base sm:text-lg font-extrabold font-mono-num text-sky-400"><span id="driver-hud-speed">0</span> <span class="text-xs font-normal">km/h</span></div>
+        </div>
+        <div class="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+          <div class="text-[10px] uppercase text-slate-400">Bússola 3D</div>
+          <div class="text-base sm:text-lg font-extrabold font-mono-num text-amber-400"><span id="driver-hud-heading">0</span>°</div>
+        </div>
+        <div class="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+          <div class="text-[10px] uppercase text-slate-400">Embarques Hoje</div>
+          <div class="text-base sm:text-lg font-extrabold font-mono-num text-emerald-400" id="driver-hud-pax-count">0</div>
+        </div>
+      </div>
+
+      <!-- Botões Grandes INICIAR ROTA / FINALIZAR ROTA -->
+      <div class="flex items-center gap-2.5">
+        <button type="button" id="btn-driver-start-route" class="btn-emerald !py-3.5 !px-6 text-sm sm:text-base flex-1 lg:flex-initial shadow-lg">
+          <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+          <span>INICIAR ROTA</span>
+        </button>
+        <button type="button" id="btn-driver-finish-route" class="btn-danger !py-3.5 !px-6 text-sm sm:text-base flex-1 lg:flex-initial hidden">
+          <i data-lucide="square" class="w-5 h-5 fill-current"></i>
+          <span>FINALIZAR ROTA</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Área Principal: Mapa de Navegação 3D (Pitch 65 + Bearing Dinâmico) e Lista de Paradas/Passageiros -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div class="lg:col-span-8 card-surface p-3 relative">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-xs font-bold">3D PITCH 65°</span>
+            <span class="text-xs text-slate-300">Câmera acompanha direção do GPS automaticamente</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-driver-simulate-gps" class="btn-secondary !py-1.5 !px-3 text-xs border-amber-500/40 text-amber-300" title="Simular deslocamento na via caso esteja testando no PC">
+              <i data-lucide="navigation-2" class="w-3.5 h-3.5"></i>
+              <span id="label-driver-sim">Simular Direção na Via</span>
+            </button>
+            <button type="button" id="btn-driver-recenter-3d" class="btn-secondary !py-1.5 !px-3 text-xs">
+              <i data-lucide="compass" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Centralizar 3D</span>
+            </button>
+          </div>
+        </div>
+        <div id="map-driver-3d" class="map-viewport-hero"></div>
+      </div>
+
+      <!-- Coluna Lateral do Motorista: Pontos de Parada + Passageiros Aguardando -->
+      <div class="lg:col-span-4 flex flex-col gap-4">
+        <div class="card-surface p-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Pontos de Parada e Horários</h3>
+          <div id="driver-stops-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
+        </div>
+
+        <div class="card-surface p-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Passageiros da Rota (Status Hoje)</h3>
+          <div id="driver-passengers-list" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ========================================================================
+       MODAL 1: CONFIGURAÇÃO DA URL DO WEB APP GOOGLE APPS SCRIPT (SHEETS API)
+       ======================================================================== -->
+  <div id="modal-api-config" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="card-surface max-w-xl w-full p-6 border border-sky-500/30">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 rounded-lg bg-amber-500/15 text-amber-400">
+            <i data-lucide="database" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Conexão Google Sheets + Apps Script</h3>
+            <p class="text-xs text-slate-400">Configure ou troque a URL do Web App (<code class="text-sky-300">/exec</code>) da sua planilha.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-api-config" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        <div>
+          <label for="input-gas-url" class="block text-xs font-semibold text-slate-300 mb-1.5">URL do Web App do Google Apps Script</label>
+          <input
+            id="input-gas-url"
+            type="url"
+            class="input-field font-mono text-xs"
+            placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+          />
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            Cole o arquivo <code class="text-sky-300">Code.gs</code> no menu <strong>Extensões &rarr; Apps Script</strong> da sua planilha Google, implante como <strong>App da Web</strong> com acesso para <em>"Qualquer pessoa"</em> e cole a URL acima. Se deixado em branco, o sistema opera no modo local persistente com sincronização instantânea.
+          </p>
+        </div>
+
+        <div id="api-test-feedback" class="hidden p-3 rounded-xl text-xs font-mono border"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800">
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-test-gas-url" class="btn-secondary !py-2 !px-3 text-xs">
+              <i data-lucide="activity" class="w-4 h-4 text-sky-400"></i>
+              <span>Testar Conexão</span>
+            </button>
+            <button type="button" id="btn-push-seed-to-gas" class="btn-secondary !py-2 !px-3 text-xs" title="Envia os dados locais e cria as abas na planilha">
+              <i data-lucide="upload-cloud" class="w-4 h-4 text-emerald-400"></i>
+              <span>Inicializar e Enviar Dados para Planilha</span>
+            </button>
+          </div>
+
+          <button type="button" id="btn-save-gas-url" class="btn-primary !py-2 !px-4 text-xs">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Salvar URL</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 2: COMPONENTE DE INSTALAÇÃO INTELIGENTE (iOS / ANDROID INSTRUÇÕES)
+       ======================================================================== -->
+  <div id="modal-ios-install" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="card-surface max-w-md w-full p-6 border border-sky-500/40">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <img src="/icons/icon.svg" alt="RotaCYMI" class="w-9 h-9 rounded-xl" />
+          <div>
+            <h3 class="text-base font-bold text-white">Instalar Aplicativo RotaCYMI</h3>
+            <p class="text-xs text-slate-400">Acesso rápido em tela cheia na tela de início</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-ios-install" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3 text-xs text-slate-200">
+        <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-3">
+          <div class="w-7 h-7 rounded-lg bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center shrink-0">1</div>
+          <div>
+            No navegador <strong>Safari</strong> (iPhone / iPad), toque no botão <strong>Compartilhar</strong>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-mono text-[11px] mx-1">Compartilhar &#x2191;</span>
+            na barra inferior ou superior.
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-3">
+          <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0">2</div>
+          <div>
+            Role a lista de opções e selecione <strong>"Adicionar à Tela de Início"</strong> (<em>Add to Home Screen</em>).
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-3">
+          <div class="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center shrink-0">3</div>
+          <div>
+            Toque em <strong>"Adicionar"</strong> no canto superior direito. No Android/Chrome, clique abaixo caso disponível ou use o menu <strong>"Instalar aplicativo"</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 flex justify-end gap-2">
+        <button type="button" id="btn-trigger-native-install" class="btn-primary !py-2 !px-4 text-xs hidden">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Instalar Agora (Android/Desktop)</span>
+        </button>
+        <button type="button" id="btn-dismiss-ios-install" class="btn-secondary !py-2 !px-4 text-xs">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container de Notificações Toast -->
+  <div id="toast-container"></div>
+
+  <!-- Lógica Principal Modular da Aplicação -->
+  <script src="/app.js"></script>
+</body>
+</html>
