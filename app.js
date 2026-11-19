@@ -2420,6 +2420,54 @@
     }
   }
 
+  /** Abre a rota (origem, paradas intermediárias e destino) no Google Maps. */
+  function exportRouteToGoogleMaps(routeId) {
+    const r = (state.db.rotas || []).find((x) => x.id === routeId);
+    const pts = ((r && r.pontos) || []).filter((p) => isFinite(Number(p.lat)) && isFinite(Number(p.lng)));
+    if (pts.length < 2) {
+      showToast('A rota precisa de ao menos 2 pontos para abrir no Google Maps.', 'error');
+      return;
+    }
+    const fmt = (p) => `${Number(p.lat).toFixed(6)},${Number(p.lng).toFixed(6)}`;
+    let mid = pts.slice(1, -1);
+    const MAX = 9; // limite de paradas intermediárias da URL do Google Maps
+    if (mid.length > MAX) {
+      const sampled = [];
+      for (let i = 0; i < MAX; i++) sampled.push(mid[Math.round((i * (mid.length - 1)) / (MAX - 1))]);
+      mid = sampled;
+      showToast('Google Maps aceita até 9 paradas intermediárias; use o KML para todos os pontos.', 'info');
+    }
+    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${fmt(pts[0])}&destination=${fmt(
+      pts[pts.length - 1]
+    )}`;
+    if (mid.length) url += `&waypoints=${mid.map(fmt).join('%7C')}`;
+    window.open(url, '_blank', 'noopener');
+  }
+
+  /** Baixa um KML com todos os pontos e o trajeto (abre no Google Earth / Google Meus Mapas). */
+  function exportRouteToKml(routeId) {
+    const r = (state.db.rotas || []).find((x) => x.id === routeId);
+    if (!r) return;
+    const esc = (t) => String(t == null ? '' : t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+    const marks = (r.pontos || [])
+      .map(
+        (p, i) =>
+          `<Placemark><name>${i + 1}. ${esc(p.nome)}</name><description>${esc(p.horario || '')}</description><Point><coordinates>${Number(p.lng)},${Number(p.lat)},0</coordinates></Point></Placemark>`
+      )
+      .join('');
+    const line = Array.isArray(r.polyline) && r.polyline.length > 1 ? r.polyline : (r.pontos || []).map((p) => [p.lng, p.lat]);
+    const kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(r.nome)}</name>${marks}<Placemark><name>Trajeto ${esc(r.nome)}</name><Style><LineStyle><color>ffe9a50e</color><width>4</width></LineStyle></Style><LineString><tessellate>1</tessellate><coordinates>${line.map((c) => `${c[0]},${c[1]},0`).join(' ')}</coordinates></LineString></Placemark></Document></kml>`;
+    const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${String(r.nome || 'rota').replace(/[^\w\-]+/g, '_')}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    showToast('KML baixado. Importe em mymaps.google.com ou abra no Google Earth.', 'success');
+  }
+
   function renderSavedRoutesListAdmin() {
     const container = document.getElementById('admin-routes-saved-list');
     if (!container) return;
@@ -2460,6 +2508,8 @@
               <button type="button" data-builder-toggle-open="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs ${
                 isLive ? 'text-rose-300 border-rose-500/40' : 'text-emerald-300 border-emerald-500/40'
               }">${isLive ? 'Fechar' : 'Abrir Rota'}</button>
+              <button type="button" data-gmaps-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-sky-300 border-sky-500/40" title="Abrir rota e pontos no Google Maps">Google Maps</button>
+              <button type="button" data-kml-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-amber-300 border-amber-500/40" title="Baixar KML (Google Earth / Meus Mapas)">KML</button>
               <button type="button" data-edit-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs">Editar</button>
               <button type="button" data-del-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-rose-400">Excluir</button>
             </div>
@@ -2472,6 +2522,13 @@
       btn.addEventListener('click', () =>
         toggleRouteOpenState(btn.getAttribute('data-builder-toggle-open'))
       );
+    });
+
+    container.querySelectorAll('[data-gmaps-route]').forEach((btn) => {
+      btn.addEventListener('click', () => exportRouteToGoogleMaps(btn.getAttribute('data-gmaps-route')));
+    });
+    container.querySelectorAll('[data-kml-route]').forEach((btn) => {
+      btn.addEventListener('click', () => exportRouteToKml(btn.getAttribute('data-kml-route')));
     });
 
     container.querySelectorAll('[data-edit-route]').forEach((btn) => {
