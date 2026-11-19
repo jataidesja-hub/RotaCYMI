@@ -4174,6 +4174,40 @@
       selectEl.value = rota.id;
     }
 
+    // Botões visuais de IDA / VOLTA (substituem o seletor em texto)
+    const btnsEl = document.getElementById('driver-route-buttons');
+    if (btnsEl) {
+      btnsEl.innerHTML = (state.db.rotas || [])
+        .map((r) => {
+          const volta = getRouteDirectionType(r) === 'VOLTA';
+          const open = r.status === 'EM_ANDAMENTO';
+          const active = r.id === rota.id;
+          const color = volta ? 'amber' : 'sky';
+          return `<button type="button" data-driver-pick-route="${r.id}" class="flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition ${
+            active ? `bg-${color}-500/20 border-${color}-400 shadow-md` : 'bg-slate-900/80 border-slate-700 hover:border-slate-500'
+          }">
+            <span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${volta ? 'bg-amber-500/25 text-amber-300' : 'bg-sky-500/25 text-sky-300'}">
+              <i data-lucide="${volta ? 'corner-down-left' : 'arrow-right'}" class="w-5 h-5"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-[10px] font-extrabold uppercase tracking-wider ${volta ? 'text-amber-300' : 'text-sky-300'}">${volta ? 'VOLTA' : 'IDA'}</span>
+              <span class="block text-xs font-bold text-white truncate">${r.nome}</span>
+            </span>
+            <span class="status-pill ${open ? 'live' : 'idle'} !text-[10px]">${open ? 'ABERTA' : 'FECHADA'}</span>
+          </button>`;
+        })
+        .join('');
+      btnsEl.querySelectorAll('[data-driver-pick-route]').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (selectEl) {
+            selectEl.value = b.getAttribute('data-driver-pick-route');
+            selectEl.dispatchEvent(new Event('change'));
+          }
+        });
+      });
+      refreshIcons();
+    }
+
     // Sincroniza botões ABRIR / INICIAR ROTA vs FECHAR / FINALIZAR ROTA com o status da rota selecionada
     const btnStart = document.getElementById('btn-driver-start-route');
     const btnFinish = document.getElementById('btn-driver-finish-route');
