@@ -160,7 +160,7 @@
           turno: 'Manhã',
           veiculoId: 'veic_101',
           motoristaId: 'mot_01',
-          status: 'EM_ANDAMENTO',
+          status: 'PARADA',
           distanciaKm: 5.8,
           duracaoMin: 18,
           pontos: [
@@ -265,7 +265,7 @@
           lng: -40.5032,
           velocidade: 38,
           heading: 15,
-          statusRota: 'EM_ANDAMENTO',
+          statusRota: 'PARADA',
           proximoPontoId: 'pto_03',
           updatedAt: now
         },
@@ -469,6 +469,12 @@
         if (parsed && Array.isArray(parsed.usuarios)) {
           ensureMasterAdminInDb(parsed);
           migrateLegacySaoPauloCoords(parsed);
+          // Migração única: fecha rotas que ficaram "abertas" por cache/seed antigo (motorista deve iniciar)
+          if (!localStorage.getItem('rotacymi_routes_reset_v1')) {
+            (parsed.rotas || []).forEach((r) => (r.status = 'PARADA'));
+            (parsed.telemetria || []).forEach((t) => (t.statusRota = 'PARADA'));
+            localStorage.setItem('rotacymi_routes_reset_v1', '1');
+          }
           return parsed;
         }
       }
@@ -5772,8 +5778,10 @@
             // Sincroniza em tempo real quais rotas estão ABERTAS (EM_ANDAMENTO) ou FECHADAS (PARADA)
             res.telemetria.forEach((tel) => {
               const r = state.db.rotas.find((rt) => rt.id === tel.rotaId);
+              // Telemetria antiga (>3 min sem atualizar) não mantém a rota aberta: o motorista precisa iniciar
+              const isFresh = tel.updatedAt && Date.now() - new Date(tel.updatedAt).getTime() < 3 * 60 * 1000;
               if (r && tel.statusRota) {
-                r.status = tel.statusRota === 'EM_ANDAMENTO' ? 'EM_ANDAMENTO' : 'PARADA';
+                r.status = tel.statusRota === 'EM_ANDAMENTO' && isFresh ? 'EM_ANDAMENTO' : 'PARADA';
               }
             });
           }
