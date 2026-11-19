@@ -4374,7 +4374,7 @@
       el.innerHTML = `
         <div class="cymi-stop-badge">
           <span>P${idx + 1}</span>
-          <span class="text-sky-400 font-mono">${pt.horario}</span>
+          ${isVolta ? '' : `<span class="text-sky-400 font-mono">${pt.horario}</span>`}
         </div>
         <div class="cymi-stop-pin"></div>
       `;
