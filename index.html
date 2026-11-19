@@ -1010,6 +1010,13 @@
         <div id="map-driver-3d" class="map-viewport-hero"></div>
       </div>
 
+      <!-- Lista lateral de passageiros (somente rota de VOLTA, ao lado do mapa) -->
+      <div id="driver-passengers-side" data-driver-panel="mapa" style="display:none" class="lg:col-span-4 card-surface p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Passageiros no Ônibus</h3>
+        <p id="driver-passengers-side-count" class="text-[11px] text-slate-400 mb-3"></p>
+        <div id="driver-passengers-side-list" class="space-y-2 max-h-[70vh] overflow-y-auto pr-1"></div>
+      </div>
+
       <!-- Coluna Lateral do Motorista: Pontos de Parada + Passageiros Aguardando (abas) -->
       <div class="contents">
         <div data-driver-panel="paradas" class="hidden lg:col-span-12 card-surface p-4">

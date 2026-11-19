@@ -4293,7 +4293,9 @@
                 </div>
               </div>
               <span class="text-right font-mono text-xs font-bold ${drvEta[pt.id] && drvEta[pt.id].passed ? 'text-slate-500' : 'text-sky-400'}">${
-                drvEta[pt.id]
+                isVolta
+                  ? ''
+                  : drvEta[pt.id]
                   ? drvEta[pt.id].passed
                     ? 'Passou'
                     : `${drvEta[pt.id].label}<span class="block text-[10px] font-normal text-slate-400">~${drvEta[pt.id].minutes} min • prog. ${pt.horario}</span>`
@@ -4305,31 +4307,50 @@
         .join('');
     }
 
-    // Renderiza Lista de Passageiros da Rota
-    const paxEl = document.getElementById('driver-passengers-list');
-    if (paxEl) {
-      paxEl.innerHTML = passengers
-        .map((p) => {
-          const isGoing = p.statusEmbarque !== 'NAO_VOU';
-          const stopActionPrefix = isVolta ? 'Desce em' : 'Sobe em';
-          return `
-            <div class="p-2.5 rounded-xl bg-slate-900/85 border border-slate-800 flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2.5">
-                <img src="${p.foto || './icons/icon.svg'}" alt="${p.nome}" class="w-8 h-8 rounded-full object-cover border border-slate-700" />
-                <div>
-                  <div class="text-xs font-bold text-white">${p.nome}</div>
-                  <div class="text-[11px] text-slate-400">${stopActionPrefix}: <strong class="text-slate-200">${
-                    p.resolvedStopName || p.endereco
-                  }</strong></div>
+    // Renderiza Lista de Passageiros da Rota (quem marcou "Não vou" aparece em vermelho, ao final)
+    const sortedPax = [...passengers].sort(
+      (x, y) => Number(x.statusEmbarque === 'NAO_VOU') - Number(y.statusEmbarque === 'NAO_VOU')
+    );
+    const paxHtml = sortedPax
+      .map((p) => {
+        const isGoing = p.statusEmbarque !== 'NAO_VOU';
+        const stopActionPrefix = isVolta ? 'Desce em' : 'Sobe em';
+        return `
+            <div class="p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+              isGoing ? 'bg-slate-900/85 border-slate-800' : 'bg-rose-950/50 border-rose-500/60'
+            }">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <img src="${p.foto || './icons/icon.svg'}" alt="${p.nome}" class="w-8 h-8 rounded-full object-cover border ${
+          isGoing ? 'border-slate-700' : 'border-rose-500 opacity-70'
+        }" />
+                <div class="min-w-0">
+                  <div class="text-xs font-bold truncate ${isGoing ? 'text-white' : 'text-rose-300 line-through'}">${p.nome}</div>
+                  <div class="text-[11px] text-slate-400 truncate">${stopActionPrefix}: <strong class="${
+          isGoing ? 'text-slate-200' : 'text-rose-300'
+        }">${p.resolvedStopName || p.endereco}</strong></div>
                 </div>
               </div>
-              <span class="status-pill ${isGoing ? 'live' : 'idle'}">${
-                isGoing ? (isVolta ? 'VAI DESCER' : 'VAI SUBIR') : 'NÃO VAI'
-              }</span>
+              <span class="status-pill shrink-0 ${isGoing ? 'live' : ''}" style="${
+          isGoing ? '' : 'background:rgba(244,63,94,.2);color:#fda4af;border:1px solid rgba(244,63,94,.6)'
+        }">${isGoing ? (isVolta ? 'VAI' : 'VAI SUBIR') : 'NÃO VAI'}</span>
             </div>
           `;
-        })
-        .join('');
+      })
+      .join('');
+    const paxEl = document.getElementById('driver-passengers-list');
+    if (paxEl) paxEl.innerHTML = paxHtml;
+    const paxSideEl = document.getElementById('driver-passengers-side-list');
+    if (paxSideEl) paxSideEl.innerHTML = paxHtml;
+    const paxSideCount = document.getElementById('driver-passengers-side-count');
+    if (paxSideCount) paxSideCount.textContent = `${goingPassengers.length} vão • ${passengers.length - goingPassengers.length} não vão`;
+
+    // Na VOLTA: lista de passageiros ao lado do mapa (sem horários); na IDA: mapa em largura total
+    const sideCard = document.getElementById('driver-passengers-side');
+    const mapCardEl = document.getElementById('driver-map-card');
+    if (sideCard) sideCard.style.display = isVolta ? '' : 'none';
+    if (mapCardEl) {
+      mapCardEl.classList.toggle('lg:col-span-8', isVolta);
+      mapCardEl.classList.toggle('lg:col-span-12', !isVolta);
     }
 
     const map = state.maps.driver3d;
