@@ -2,8 +2,8 @@
  * ROTA CYMI - SERVICE WORKER (PWA OFFLINE COMPLETO: APP SHELL + MAPA + ROTAS)
  * ============================================================================ */
 
-const CACHE_NAME = 'rotacymi-pwa-v1.12.0';
-const RUNTIME_CACHE = 'rotacymi-runtime-v1.12.0';
+const CACHE_NAME = 'rotacymi-pwa-v1.13.0';
+const RUNTIME_CACHE = 'rotacymi-runtime-v1.13.0';
 
 const STATIC_ASSETS = [
   './',

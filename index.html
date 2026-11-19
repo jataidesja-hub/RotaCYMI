@@ -687,7 +687,7 @@
   <!-- ========================================================================
        MÓDULO 2: TELA DO USUÁRIO / FUNCIONÁRIO (PASSAGEIRO)
        ======================================================================== -->
-  <section id="view-passenger" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-4 gap-4">
+  <section id="view-passenger" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 pt-4 pb-24 gap-4">
     
     <!-- Barra Superior do Passageiro: Status Rápido de Embarque + Alternador Mapa / Meu Perfil -->
     <div class="card-surface p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -785,9 +785,9 @@
     </div>
 
     <!-- Grid Principal do Passageiro: Mapa ao Vivo + Card do Ponto Selecionado / Mais Próximo -->
-    <div id="pax-tab-map" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    <div id="pax-tab-map" class="flex flex-col gap-4">
       <!-- Mapa de Rastreamento ao Vivo -->
-      <div class="lg:col-span-8 card-surface p-3">
+      <div data-pax-panel="mapa" class="card-surface p-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
           <div>
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
@@ -815,9 +815,9 @@
       </div>
 
       <!-- Coluna Direita: Destaque do Ponto de Subida (IDA) ou Descida (VOLTA) + Lista de Paradas -->
-      <div class="lg:col-span-4 flex flex-col gap-4">
+      <div class="contents">
         <!-- Card do Ponto de Subida/Descida Selecionado e Mais Próximo -->
-        <div class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/40 to-slate-900/90">
+        <div data-pax-panel="mapa" class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/40 to-slate-900/90">
           <div class="flex items-center justify-between">
             <span id="pax-card-stop-label" class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
               <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
@@ -840,7 +840,7 @@
         </div>
 
         <!-- Todos os Pontos da Rota (Clique para selecionar Onde Sobe ou Onde Desce) -->
-        <div class="card-surface p-4">
+        <div data-pax-panel="horarios" class="hidden card-surface p-4">
           <h3 id="pax-timeline-heading" class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">
             Paradas da Rota — Toque para escolher onde SOBE
           </h3>
@@ -920,7 +920,7 @@
   <!-- ========================================================================
        MÓDULO 3: TELA DO MOTORISTA (COCKPIT NAVEGAÇÃO 3D + WAKE LOCK + TELEMETRIA)
        ======================================================================== -->
-  <section id="view-driver" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-3 gap-3">
+  <section id="view-driver" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 pt-3 pb-24 gap-3">
     
     <!-- HUD Superior de Telemetria e Controles de Viagem (Escolha IDA ou VOLTA) -->
     <div class="card-surface p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-sky-500/30">
@@ -1009,19 +1009,26 @@
         <div id="map-driver-3d" class="map-viewport-hero"></div>
       </div>
 
-      <!-- Coluna Lateral do Motorista: Pontos de Parada + Passageiros Aguardando -->
-      <div class="lg:col-span-4 flex flex-col gap-4">
-        <div class="card-surface p-4">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Pontos de Parada e Horários</h3>
-          <div id="driver-stops-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
+      <!-- Coluna Lateral do Motorista: Pontos de Parada + Passageiros Aguardando (abas) -->
+      <div class="contents">
+        <div data-driver-panel="paradas" class="hidden lg:col-span-12 card-surface p-4">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Pontos de Parada e Horários (previsão ao vivo)</h3>
+          <div id="driver-stops-list" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
         </div>
 
-        <div class="card-surface p-4">
+        <div data-driver-panel="passageiros" class="hidden lg:col-span-12 card-surface p-4">
           <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Passageiros da Rota (Status Hoje)</h3>
-          <div id="driver-passengers-list" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></div>
+          <div id="driver-passengers-list" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
         </div>
       </div>
     </div>
+
+    <!-- Barra de Abas do Motorista (fixa no rodapé) -->
+    <nav class="app-tabbar" aria-label="Navegação do motorista">
+      <button type="button" data-driver-tab="mapa" class="app-tab active"><i data-lucide="map" class="w-5 h-5"></i><span>Mapa</span></button>
+      <button type="button" data-driver-tab="paradas" class="app-tab"><i data-lucide="map-pin" class="w-5 h-5"></i><span>Paradas</span></button>
+      <button type="button" data-driver-tab="passageiros" class="app-tab"><i data-lucide="users" class="w-5 h-5"></i><span>Passageiros</span></button>
+    </nav>
 
   </section>
 

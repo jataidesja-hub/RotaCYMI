@@ -3116,6 +3116,111 @@
     state.maps.passengerLive = map;
   }
 
+  /** Navegação por abas do passageiro: mapa | ponto | horarios | perfil */
+  function setPaxTab(name) {
+    const tab = ['mapa', 'ponto', 'horarios', 'perfil'].includes(name) ? name : 'mapa';
+    state.paxTab = tab;
+    document.querySelectorAll('[data-pax-panel]').forEach((el) => {
+      el.classList.toggle('hidden', el.getAttribute('data-pax-panel') !== tab);
+    });
+    document.getElementById('pax-tab-profile')?.classList.toggle('hidden', tab !== 'perfil');
+    document.querySelectorAll('[data-pax-tab]').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-pax-tab') === tab);
+    });
+    if (tab === 'perfil') openPassengerSelfProfileModal();
+    if (tab === 'mapa') {
+      setTimeout(() => {
+        if (state.maps.passengerLive) state.maps.passengerLive.resize();
+      }, 60);
+    }
+    window.scrollTo({ top: 0 });
+  }
+
+  /** Navegação por abas do motorista: mapa | paradas | passageiros */
+  function setDriverTab(name) {
+    const tab = ['mapa', 'paradas', 'passageiros'].includes(name) ? name : 'mapa';
+    state.driverTab = tab;
+    document.querySelectorAll('[data-driver-panel]').forEach((el) => {
+      el.classList.toggle('hidden', el.getAttribute('data-driver-panel') !== tab);
+    });
+    document.querySelectorAll('[data-driver-tab]').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-driver-tab') === tab);
+    });
+    if (tab === 'mapa') {
+      setTimeout(() => {
+        if (state.maps.driver3d) state.maps.driver3d.resize();
+      }, 60);
+    }
+  }
+
+  /**
+   * Calcula o ETA de cada parada a partir da posição real do ônibus, medindo a distância
+   * ao longo do trajeto (polyline). Retorna { [stopId]: { passed, minutes, label } }.
+   */
+  const etaProgress = {};
+  const etaSpeed = {};
+  function computeStopEtas(route, stops, tel) {
+    const out = {};
+    if (!route || !tel || !stops || stops.length === 0) return out;
+    const busLat = Number(tel.lat);
+    const busLng = Number(tel.lng);
+    if (!isFinite(busLat) || !isFinite(busLng)) return out;
+
+    let poly = Array.isArray(route.polyline) && route.polyline.length > 1 ? route.polyline : null;
+    if (!poly) poly = stops.map((s) => [Number(s.lng), Number(s.lat)]);
+    const cum = [0];
+    for (let i = 1; i < poly.length; i++) {
+      cum.push(cum[i - 1] + calculateHaversineMeters(poly[i - 1][1], poly[i - 1][0], poly[i][1], poly[i][0]));
+    }
+    const nearestIdx = (lat, lng, from) => {
+      let best = from;
+      let bd = Infinity;
+      for (let i = from; i < poly.length; i++) {
+        const d = calculateHaversineMeters(lat, lng, poly[i][1], poly[i][0]);
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      return best;
+    };
+
+    // Posição do ônibus no trajeto (nunca retrocede mais que alguns pontos)
+    const prev = etaProgress[route.id] || 0;
+    let busIdx = nearestIdx(busLat, busLng, Math.max(0, prev - 8));
+    etaProgress[route.id] = busIdx;
+    const busCum = cum[busIdx];
+
+    // Velocidade média suavizada (km/h), com mínimo para não divergir quando parado
+    const cur = Number(tel.velocidade || 0);
+    const prevSpd = etaSpeed[route.id] || 30;
+    const smooth = cur > 3 ? prevSpd * 0.7 + cur * 0.3 : prevSpd;
+    etaSpeed[route.id] = smooth;
+    const mps = Math.min(60, Math.max(20, smooth)) / 3.6;
+
+    const now = Date.now();
+    let from = 0;
+    let ahead = 0;
+    stops.forEach((s) => {
+      const idx = nearestIdx(Number(s.lat), Number(s.lng), from);
+      from = idx;
+      const distAlong = cum[idx] - busCum;
+      if (distAlong < -30) {
+        out[s.id] = { passed: true };
+        return;
+      }
+      const secs = Math.max(0, distAlong) / mps + ahead * 30;
+      ahead += 1;
+      const d = new Date(now + secs * 1000);
+      out[s.id] = {
+        passed: false,
+        minutes: Math.max(0, Math.round(secs / 60)),
+        label: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      };
+    });
+    return out;
+  }
+
   function renderPassengerLiveView() {
     if (!state.currentUser) return;
     const user = state.db.usuarios.find((u) => u.id === state.currentUser.id) || state.currentUser;
@@ -3399,9 +3504,12 @@
     if (chosenStop) {
       const isUserSaved = savedStopId && chosenStop.id === savedStopId;
       document.getElementById('pax-nearest-name').textContent = `${chosenStop.nome}`;
-      document.getElementById('pax-nearest-eta').textContent = `${
-        isVolta ? 'Descida' : 'Subida'
-      } ${chosenStop.horario}`;
+      const chosenEta = paxEta[chosenStop.id];
+      document.getElementById('pax-nearest-eta').textContent = chosenEta
+        ? chosenEta.passed
+          ? 'Ônibus já passou'
+          : `Chega ~${chosenEta.label} (${chosenEta.minutes} min)`
+        : `${isVolta ? 'Descida' : 'Subida'} ${chosenStop.horario}`;
       document.getElementById('pax-nearest-distance').textContent =
         chosenStop.distMeters >= 1000
           ? `${(chosenStop.distMeters / 1000).toFixed(2)} km`
@@ -3468,7 +3576,13 @@
                   <div class="text-[11px] text-slate-400 mt-0.5">
                     Distância até você: <strong class="font-mono text-slate-200">${
                       pt.distMeters >= 1000 ? `${(pt.distMeters / 1000).toFixed(2)} km` : `${pt.distMeters} m`
-                    }</strong> • Previsto <strong class="font-mono text-sky-300">${pt.horario}</strong>
+                    }</strong> • ${
+                      paxEta[pt.id]
+                        ? paxEta[pt.id].passed
+                          ? '<strong class="font-mono text-slate-500">Ônibus já passou</strong>'
+                          : `Chega ~<strong class="font-mono text-emerald-300">${paxEta[pt.id].label}</strong> (${paxEta[pt.id].minutes} min) <span class="text-slate-500">prog. ${pt.horario}</span>`
+                        : `Previsto <strong class="font-mono text-sky-300">${pt.horario}</strong>`
+                    }
                   </div>
                 </div>
               </div>
@@ -3664,9 +3778,6 @@
 
   function openPassengerSelfProfileModal() {
     const user = state.db.usuarios.find((u) => u.id === state.currentUser.id) || state.currentUser;
-    document.getElementById('pax-tab-map').classList.add('hidden');
-    document.getElementById('pax-tab-profile').classList.remove('hidden');
-
     document.getElementById('self-pax-name').value = user.nome || '';
     document.getElementById('self-pax-phone').value = user.telefone || '';
     document.getElementById('self-pax-address').value = user.endereco || '';
@@ -3764,8 +3875,7 @@
       av.classList.remove('hidden');
     }
 
-    document.getElementById('pax-tab-profile').classList.add('hidden');
-    document.getElementById('pax-tab-map').classList.remove('hidden');
+    setPaxTab('mapa');
     renderPassengerLiveView();
     showToast('Seu perfil e localização residencial foram atualizados!', 'success');
 
@@ -4062,6 +4172,9 @@
     document.getElementById('driver-hud-heading').textContent = Math.round(state.driverRuntime.currentHeading || 0);
     document.getElementById('driver-hud-pax-count').textContent = `${goingPassengers.length}/${passengers.length}`;
 
+    const drvTel = state.db.telemetria.find((t) => t.rotaId === rota.id);
+    const drvEta = isRouteOpen && drvTel ? computeStopEtas(rota, boardingStops, drvTel) : {};
+
     // Renderiza Lista de Pontos de Parada (indicando quantos sobem na IDA ou quantos descem na VOLTA)
     const stopsEl = document.getElementById('driver-stops-list');
     if (stopsEl) {
@@ -4082,7 +4195,13 @@
                   <div class="text-[11px] ${isVolta ? 'text-amber-300' : 'text-emerald-400'}">${paxLabel}</div>
                 </div>
               </div>
-              <span class="font-mono text-xs font-bold text-sky-400">${pt.horario}</span>
+              <span class="text-right font-mono text-xs font-bold ${drvEta[pt.id] && drvEta[pt.id].passed ? 'text-slate-500' : 'text-sky-400'}">${
+                drvEta[pt.id]
+                  ? drvEta[pt.id].passed
+                    ? 'Passou'
+                    : `${drvEta[pt.id].label}<span class="block text-[10px] font-normal text-slate-400">~${drvEta[pt.id].minutes} min • prog. ${pt.horario}</span>`
+                  : pt.horario
+              }</span>
             </div>
           `;
         })
@@ -5224,11 +5343,13 @@
 
     document.getElementById('btn-pax-status-going')?.addEventListener('click', () => updatePassengerBoardingStatus('VOU'));
     document.getElementById('btn-pax-status-skip')?.addEventListener('click', () => updatePassengerBoardingStatus('NAO_VOU'));
-    document.getElementById('btn-pax-open-profile')?.addEventListener('click', openPassengerSelfProfileModal);
-    document.getElementById('btn-pax-close-profile')?.addEventListener('click', () => {
-      document.getElementById('pax-tab-profile').classList.add('hidden');
-      document.getElementById('pax-tab-map').classList.remove('hidden');
-      if (state.maps.passengerLive) state.maps.passengerLive.resize();
+    document.getElementById('btn-pax-open-profile')?.addEventListener('click', () => setPaxTab('perfil'));
+    document.getElementById('btn-pax-close-profile')?.addEventListener('click', () => setPaxTab('mapa'));
+    document.querySelectorAll('[data-pax-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => setPaxTab(btn.getAttribute('data-pax-tab')));
+    });
+    document.querySelectorAll('[data-driver-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => setDriverTab(btn.getAttribute('data-driver-tab')));
     });
 
     document.getElementById('btn-pax-locate-me')?.addEventListener('click', () => {
