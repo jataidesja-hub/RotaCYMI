@@ -92,7 +92,7 @@
       <!-- Linha 2 do Topo: Alternador de Painéis (Admin / Motorista 3D / Passageiro) + Botões Rápidos (100% visíveis no celular) -->
       <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/60">
         <!-- Alternador Rápido de Visão para o Admin Master -->
-        <div id="admin-view-switcher" class="hidden grid-cols-3 sm:inline-flex items-center bg-slate-900/95 border border-slate-700/80 rounded-xl p-1 gap-1 w-full sm:w-auto">
+        <div id="admin-view-switcher" class="hidden grid-cols-4 sm:inline-flex items-center bg-slate-900/95 border border-slate-700/80 rounded-xl p-1 gap-1 w-full sm:w-auto">
           <button type="button" data-switch-view="ADMIN" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 transition text-center truncate">
             Admin
           </button>
@@ -102,10 +102,18 @@
           <button type="button" data-switch-view="PASSAGEIRO" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition text-center truncate">
             Passageiro
           </button>
+          <button type="button" data-switch-view="PUBLICO" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-amber-300 hover:text-white transition text-center truncate">
+            Rotas &amp; Descida 3D
+          </button>
         </div>
 
-        <!-- Botões de Ferramentas (Satélite, Instalar App, Sincronizar, API Sheets) -->
+        <!-- Botões de Ferramentas (Painel Público sem Login, Satélite, Instalar App, Sincronizar, API Sheets) -->
         <div class="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end">
+          <button id="btn-header-open-public-dropoff" type="button" class="btn-secondary !py-1.5 !px-2.5 text-[11px] border-amber-500/40 text-amber-300 flex-1 sm:flex-initial justify-center" title="Abrir Painel de Rotas 3D/Satélite e Lista de Quem Vai Descer (Sem Login)">
+            <i data-lucide="map-pin-check" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+            <span class="truncate">Rotas &amp; Descida (Sem Login)</span>
+          </button>
+
           <button id="btn-global-satellite" type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-[11px] border-emerald-500/40 text-emerald-300 flex-1 sm:flex-initial justify-center" title="Alternar todos os mapas entre Satélite Real e Mapa Escuro">
             <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
             <span class="label-satellite-state truncate">Satélite</span>
@@ -172,7 +180,12 @@
           <span>Entrar no Sistema</span>
         </button>
 
-        <div class="pt-3 border-t border-slate-800/80">
+        <div class="pt-3 border-t border-slate-800/80 space-y-2">
+          <button type="button" id="btn-open-public-dropoff" class="btn-secondary w-full py-3 text-xs font-extrabold border-amber-500/50 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 shadow">
+            <i data-lucide="map-pinned" class="w-4 h-4 text-amber-400"></i>
+            <span>Ver Rotas 3D / Satélite e Anotar Quem Vai Descer (Sem Login)</span>
+          </button>
+
           <button type="button" id="btn-open-self-signup" class="btn-secondary w-full py-2.5 text-xs border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">
             <i data-lucide="user-plus" class="w-4 h-4 text-emerald-400"></i>
             <span>Sou Funcionário Novo — Quero me Cadastrar</span>
@@ -1037,6 +1050,144 @@
       <button type="button" data-driver-tab="paradas" class="app-tab"><i data-lucide="map-pin" class="w-5 h-5"></i><span>Paradas</span></button>
       <button type="button" data-driver-tab="passageiros" class="app-tab"><i data-lucide="users" class="w-5 h-5"></i><span>Passageiros</span></button>
     </nav>
+
+  </section>
+
+  <!-- ========================================================================
+       MÓDULO 4: TELA PÚBLICA SEM LOGIN — VISUALIZAÇÃO DE ROTAS 3D/SATÉLITE E LISTA DE DESCIDA
+       ======================================================================== -->
+  <section id="view-public-dropoff" class="hidden flex-1 flex flex-col max-w-7xl w-full mx-auto px-4 py-3 gap-3">
+
+    <!-- Cabeçalho da Tela Pública: Escolha da Rota + Link Compartilhável + Voltar -->
+    <div class="card-surface p-4 flex flex-col gap-3 border-amber-500/30">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+            <i data-lucide="map-pinned" class="w-6 h-6"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">Acesso Livre • Sem Senha</span>
+              <span id="public-route-status-badge" class="status-pill idle">SELECIONE A ROTA</span>
+            </div>
+            <h2 id="public-route-title" class="text-base sm:text-lg font-extrabold text-white truncate mt-0.5">Visualizador 3D de Rotas &amp; Lista de Descida</h2>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button type="button" id="btn-public-copy-link" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Copiar link direto desta tela sem login">
+            <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Copiar Link Direto</span>
+          </button>
+          <button type="button" id="btn-public-back-login" class="btn-secondary !py-1.5 !px-3 text-xs border-slate-700 text-slate-300">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Tela de Login</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Botões Visuais para Escolher Qualquer Rota (IDA ou VOLTA) -->
+      <div>
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Toque na rota que deseja visualizar no mapa 3D / Satélite:</div>
+        <div id="public-route-buttons" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Área Principal: Mapa 3D/Satélite à Esquerda + Formulário e Lista de Quem Vai Descer à Direita -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+      <!-- Mapa 3D + Satélite da Rota -->
+      <div id="public-map-card" class="lg:col-span-7 card-surface p-3 relative">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span id="public-pitch-badge" class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-xs font-bold">VISÃO 3D (65°)</span>
+            <span class="text-xs text-slate-400">Toque em um ponto no mapa para selecioná-lo como local de descida</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" data-toggle-satellite="all" class="btn-secondary !py-1.5 !px-2.5 text-xs border-emerald-500/40 text-emerald-300">
+              <i data-lucide="satellite" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="label-satellite-state">Satélite</span>
+            </button>
+            <button type="button" id="btn-public-toggle-3d" class="btn-secondary !py-1.5 !px-2.5 text-xs border-sky-500/40 text-sky-300" title="Alternar inclinação entre Visão 3D (65°) e Visão 2D Superior">
+              <i data-lucide="box" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span id="label-public-toggle-3d">Alternar 3D / 2D</span>
+            </button>
+            <button type="button" id="btn-public-fit-route" class="btn-secondary !py-1.5 !px-2.5 text-xs border-amber-500/40 text-amber-300" title="Enquadrar toda a rota na tela">
+              <i data-lucide="zoom-out" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Ver Rota Inteira</span>
+            </button>
+            <button type="button" id="btn-public-fullscreen" class="btn-secondary !py-1.5 !px-2.5 text-xs border-purple-500/40 text-purple-300">
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-purple-400"></i>
+              <span id="label-public-fullscreen">Tela Cheia</span>
+            </button>
+          </div>
+        </div>
+        <div id="map-public-3d" class="map-viewport-hero"></div>
+      </div>
+
+      <!-- Coluna Lateral: Anotar Nome de Quem Vai Descer e Onde Vai Descer + Lista por Parada -->
+      <div class="lg:col-span-5 flex flex-col gap-4">
+
+        <!-- Formulário Rápido: Nome + Ponto onde vai descer -->
+        <div class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 to-slate-900/90">
+          <h3 class="text-xs font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5 mb-1">
+            <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
+            <span>Adicionar Quem Irá Descer e Onde Irá Descer</span>
+          </h3>
+          <p class="text-[11px] text-slate-400 mb-3">
+            Digite o nome (ou escolha da lista) e selecione o ponto de descida. Você também pode clicar direto no ponto no mapa.
+          </p>
+
+          <form id="form-public-dropoff" class="space-y-3">
+            <div>
+              <label for="public-input-name" class="block text-xs font-bold text-slate-200 mb-1">1. Nome de quem vai descer</label>
+              <input
+                type="text"
+                id="public-input-name"
+                list="public-passengers-datalist"
+                required
+                class="input-field !py-2 text-xs font-semibold"
+                placeholder="Digite o nome do colaborador..."
+              />
+              <datalist id="public-passengers-datalist"></datalist>
+            </div>
+
+            <div>
+              <label for="public-select-stop" class="block text-xs font-bold text-amber-300 mb-1">2. Ponto onde irá descer</label>
+              <select id="public-select-stop" required class="input-field !py-2 text-xs font-semibold"></select>
+            </div>
+
+            <div class="flex items-center gap-2 pt-1">
+              <button type="submit" class="btn-emerald flex-1 !py-2.5 text-xs font-extrabold">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>Adicionar à Lista de Descida</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lista de Quem Vai Descer e Onde Vai Descer -->
+        <div class="card-surface p-4">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-xs font-extrabold uppercase tracking-wider text-white">Lista de Descida da Rota</h3>
+              <p id="public-dropoff-summary" class="text-[11px] text-slate-400">0 pessoa(s) anotada(s) para descer</p>
+            </div>
+            <button type="button" id="btn-public-clear-list" class="btn-secondary !py-1 !px-2.5 text-[11px] text-rose-300 border-rose-500/30" title="Limpar anotação manual desta rota">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-400"></i>
+              <span>Limpar Manual</span>
+            </button>
+          </div>
+
+          <!-- Resumo Agrupado por Ponto de Parada -->
+          <div id="public-stops-summary-list" class="space-y-2 mb-3"></div>
+
+          <!-- Lista Individual de Nomes e Onde Vão Descer -->
+          <div id="public-dropoff-people-list" class="space-y-2 max-h-[42vh] overflow-y-auto pr-1"></div>
+        </div>
+
+      </div>
+    </div>
 
   </section>
 
