@@ -1802,6 +1802,8 @@
         card.addEventListener('click', (ev) => {
           if (ev.target.closest('[data-toggle-open-route]')) return;
           const rId = card.getAttribute('data-focus-route');
+          state.towerInspectedRouteId = state.towerInspectedRouteId === rId ? '' : rId;
+          renderTowerMapAndSidebar();
           const rObj = state.db.rotas.find((r) => r.id === rId);
           if (rObj && Array.isArray(rObj.pontos) && rObj.pontos.length > 0 && state.maps.tower) {
             const bounds = new maplibregl.LngLatBounds();
@@ -1822,8 +1824,18 @@
 
     if (!map || !map.getSource('tower-routes-source')) return;
 
-    // Atualiza Polylines de todas as rotas
-    const features = routes
+    // Na Torre de Controle, mostra no mapa SOMENTE as rotas que estão ABERTAS (EM_ANDAMENTO)
+    // (ou uma rota específica caso o Admin tenha clicado nela na lista lateral para inspecionar o trajeto)
+    const openRoutes = routes.filter((r) => r.status === 'EM_ANDAMENTO');
+    const visibleRoutesOnTower =
+      openRoutes.length > 0
+        ? openRoutes
+        : state.towerInspectedRouteId
+        ? routes.filter((r) => r.id === state.towerInspectedRouteId)
+        : [];
+
+    // Atualiza Polylines apenas das rotas abertas (ou da rota inspecionada)
+    const features = visibleRoutesOnTower
       .filter((r) => Array.isArray(r.polyline) && r.polyline.length > 1)
       .map((r) => ({
         type: 'Feature',
@@ -1847,15 +1859,16 @@
     state.markers.towerStops = [];
     state.markers.towerPax = [];
 
-    // Adiciona apenas Pontos de Parada reais (ignora pontos de desvio WAYPOINT) na Torre
-    routes.forEach((r) => {
+    // Adiciona Pontos de Parada apenas das rotas visíveis (abertas ou clicada para inspeção)
+    visibleRoutesOnTower.forEach((r) => {
+      const isVolta = getRouteDirectionType(r) === 'VOLTA';
       getBoardingStopsOnly(r).forEach((pt, idx) => {
         const el = document.createElement('div');
         el.className = 'cymi-stop-marker';
         el.innerHTML = `
           <div class="cymi-stop-badge">
             <span>P${idx + 1}</span>
-            <span class="text-sky-400 font-mono">${pt.horario || '--:--'}</span>
+            ${isVolta ? '' : `<span class="text-sky-400 font-mono">${pt.horario || '--:--'}</span>`}
           </div>
           <div class="cymi-stop-pin"></div>
         `;
@@ -1866,7 +1879,7 @@
               <div class="text-xs">
                 <div class="font-bold text-sky-400">${r.nome}</div>
                 <div class="font-bold text-white mt-0.5">${pt.nome}</div>
-                <div class="text-slate-300 mt-1">Horário previsto: <strong class="font-mono">${pt.horario}</strong></div>
+                ${isVolta ? '' : `<div class="text-slate-300 mt-1">Horário previsto: <strong class="font-mono">${pt.horario}</strong></div>`}
               </div>
             `)
           )
@@ -1907,8 +1920,8 @@
       state.markers.towerPax.push(marker);
     });
 
-    // Adiciona Ônibus em Tempo Real na Torre
-    routes.forEach((r) => {
+    // Adiciona Ônibus em Tempo Real na Torre SOMENTE das rotas que estão ABERTAS (EM_ANDAMENTO)
+    openRoutes.forEach((r) => {
       const tel = telemetries.find((t) => t.rotaId === r.id) || {
         lat: r.pontos && r.pontos[0] ? r.pontos[0].lat : DEFAULT_LAT,
         lng: r.pontos && r.pontos[0] ? r.pontos[0].lng : DEFAULT_LNG,
