@@ -340,8 +340,19 @@
       isOpen: false,
       activeRouteId: '',
       lockedRouteId: '',
+      isReadOnlySharedLink: false,
       is3dPitch: true,
-      isFullscreen: false
+      isFullscreen: false,
+      isGpsRunning: false,
+      autoFollowGps: true,
+      watchId: null,
+      telemetryTimer: null,
+      wakeLockSentinel: null,
+      currentLat: null,
+      currentLng: null,
+      currentSpeed: 0,
+      currentHeading: 0,
+      lastPushMs: 0
     },
 
     tempSelfSignupPhoto: '',
@@ -2687,6 +2698,11 @@
       sheet: 'Usuarios',
       record
     });
+
+    const targetRota = (state.db.rotas || []).find((r) => r.id === record.rotaId);
+    if (targetRota) {
+      await syncRouteStopsPeopleToCloud(targetRota);
+    }
   }
 
   function resetAdminPassengerForm() {
@@ -4881,7 +4897,7 @@
   }
 
   /* ==========================================================================
-   * 10.1 MÓDULO 4: TELA PÚBLICA SEM LOGIN (ROTAS 3D / SATÉLITE + QUEM VAI DESCER E ONDE)
+   * 10.1 MÓDULO 4: TELA PÚBLICA SEM LOGIN (ROTAS 3D / SATÉLITE + PESSOAS NOS PONTOS + INICIAR ROTA GPS)
    * ========================================================================== */
   const PUBLIC_DROPOFF_STORAGE_KEY = 'rotacymi_public_dropoffs_v1';
 
@@ -4901,21 +4917,141 @@
     } catch (e) {}
   }
 
+  /**
+   * Sincroniza os nomes cadastrados nos pontos diretamente dentro de `rota.pontos[i].pessoas`
+   * e salva na planilha (Google Sheets) para que QUALQUER celular que abrir o link veja os nomes!
+   */
+  async function syncRouteStopsPeopleToCloud(rota) {
+    if (!rota || !Array.isArray(rota.pontos)) return;
+    const entries = getDropoffEntriesForRoute(rota);
+    rota.pontos.forEach((pt) => {
+      if (pt.tipo === 'WAYPOINT') return;
+      pt.pessoas = entries
+        .filter((e) => e.stopId === pt.id)
+        .map((e) => ({
+          id: e.id,
+          nome: e.nome,
+          userId: e.userId || ''
+        }));
+    });
+    rota.updatedAt = new Date().toISOString();
+    saveLocalDb();
+
+    await callGasApi({
+      action: 'upsertEntity',
+      sheet: 'Rotas',
+      record: rota
+    });
+  }
+
+  /**
+   * Codifica um snapshot compacto dos nomes cadastrados em cada ponto na própria URL (`&dados=...`)
+   * garantindo que quem abrir o link veja imediatamente todas as pessoas mesmo antes da planilha carregar.
+   */
+  function encodeRoutePeopleSnapshotForUrl(rota) {
+    if (!rota) return '';
+    try {
+      const stops = getBoardingStopsOnly(rota);
+      const entries = getDropoffEntriesForRoute(rota);
+      // Formato compacto: [[indicePonto, "Nome Ponto", ["Pessoa 1", "Pessoa 2"]], ...]
+      const compact = stops.map((st, idx) => [
+        idx,
+        st.nome || `Parada ${idx + 1}`,
+        entries.filter((e) => e.stopId === st.id).map((e) => e.nome)
+      ]);
+      const jsonStr = JSON.stringify(compact);
+      return btoa(unescape(encodeURIComponent(jsonStr)));
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function applyUrlPeopleSnapshotToRoute(rota, encodedSnap) {
+    if (!rota || !encodedSnap || !Array.isArray(rota.pontos)) return;
+    try {
+      const jsonStr = decodeURIComponent(escape(atob(encodedSnap)));
+      const compact = JSON.parse(jsonStr);
+      if (!Array.isArray(compact)) return;
+
+      const stops = getBoardingStopsOnly(rota);
+      const manualList = loadPublicManualDropoffs().filter((m) => m.routeId !== rota.id);
+
+      compact.forEach((item) => {
+        if (!Array.isArray(item)) return;
+        const [stopIdx, stopCustomName, namesArr] = item;
+        const targetStop = stops[Number(stopIdx)];
+        if (!targetStop) return;
+
+        if (stopCustomName && typeof stopCustomName === 'string') {
+          targetStop.nome = stopCustomName;
+        }
+
+        if (Array.isArray(namesArr)) {
+          targetStop.pessoas = namesArr
+            .filter((n) => typeof n === 'string' && n.trim())
+            .map((nome, nIdx) => {
+              const cleanName = nome.trim();
+              const entryId = `snap_${rota.id}_${targetStop.id}_${nIdx}`;
+              manualList.push({
+                id: entryId,
+                routeId: rota.id,
+                nome: cleanName,
+                stopId: targetStop.id,
+                stopName: targetStop.nome,
+                userId: '',
+                updatedAt: new Date().toISOString()
+              });
+              return { id: entryId, nome: cleanName, userId: '' };
+            });
+        }
+      });
+
+      savePublicManualDropoffs(manualList);
+      saveLocalDb(false);
+    } catch (e) {
+      console.warn('Aviso ao decodificar snapshot de pessoas do link:', e);
+    }
+  }
+
   function getPublicDropoffDirectUrl(customRouteId = '') {
     const base = window.location.origin + window.location.pathname;
     const rId = customRouteId || state.publicRuntime.activeRouteId;
-    return rId ? `${base}?painel=descida&rota=${encodeURIComponent(rId)}` : `${base}?painel=descida`;
+    const rota = (state.db.rotas || []).find((r) => r.id === rId);
+    if (!rId) return `${base}?painel=descida`;
+
+    // Garante que os nomes atuais também estejam gravados em rota.pontos[].pessoas
+    if (rota) {
+      syncRouteStopsPeopleToCloud(rota);
+    }
+    const snap = rota ? encodeRoutePeopleSnapshotForUrl(rota) : '';
+    return `${base}?painel=descida&rota=${encodeURIComponent(rId)}${snap ? `&dados=${encodeURIComponent(snap)}` : ''}`;
   }
 
   async function openPublicDropoffView(initialRouteId = '', lockToThisRoute = false) {
     state.publicRuntime.isOpen = true;
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRota = urlParams.get('rota') || '';
+    const urlDados = urlParams.get('dados') || '';
+
     if (lockToThisRoute && initialRouteId) {
       state.publicRuntime.lockedRouteId = initialRouteId;
+      state.publicRuntime.isReadOnlySharedLink = true;
     } else if (!initialRouteId && !lockToThisRoute) {
-      // Se o Admin abrir pelo painel interno, destrava para ele escolher qual rota quer gerar o link
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlRota = urlParams.get('rota') || '';
-      state.publicRuntime.lockedRouteId = urlRota || '';
+      // Se o Admin abriu pelo botão interno do sistema, entra em modo Editor (pode escolher rota e cadastrar nomes)
+      // Se a pessoa abriu direto pelo link compartilhado (?rota=...), fica travado em Somente Leitura + Iniciar Rota GPS
+      if (urlRota && !state.currentUser) {
+        state.publicRuntime.lockedRouteId = urlRota;
+        state.publicRuntime.isReadOnlySharedLink = true;
+      } else {
+        state.publicRuntime.lockedRouteId = '';
+        state.publicRuntime.isReadOnlySharedLink = false;
+      }
+    }
+
+    // Oculta a barra superior global de administração caso a pessoa tenha aberto apenas o link compartilhado
+    const globalHeader = document.querySelector('body > header');
+    if (globalHeader) {
+      globalHeader.classList.toggle('hidden', state.publicRuntime.isReadOnlySharedLink && !state.currentUser);
     }
 
     document.getElementById('view-auth')?.classList.add('hidden');
@@ -4934,6 +5070,9 @@
 
     if (chosen) {
       state.publicRuntime.activeRouteId = chosen.id;
+      if (urlDados && (!urlRota || urlRota === chosen.id)) {
+        applyUrlPeopleSnapshotToRoute(chosen, urlDados);
+      }
     }
 
     // Garante geometria OSRM das rotas para exibição 3D fiel às ruas
@@ -4954,7 +5093,11 @@
   }
 
   function closePublicDropoffView() {
+    stopPublicRouteGpsNavigation(false);
     state.publicRuntime.isOpen = false;
+    const globalHeader = document.querySelector('body > header');
+    if (globalHeader) globalHeader.classList.remove('hidden');
+
     document.getElementById('view-public-dropoff')?.classList.add('hidden');
     if (state.currentUser) {
       loginSuccessRedirect(state.currentUser, false);
@@ -4989,6 +5132,15 @@
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    // Se o motorista arrastar o mapa com o dedo durante a navegação GPS, libera a câmera livremente
+    ['dragstart', 'wheel', 'boxzoomstart'].forEach((evtName) => {
+      map.on(evtName, (e) => {
+        if (e && e.originalEvent && state.publicRuntime.isGpsRunning && state.publicRuntime.autoFollowGps) {
+          state.publicRuntime.autoFollowGps = false;
+        }
+      });
+    });
 
     map.on('load', () => {
       map.addSource('public-route-source', {
@@ -5034,6 +5186,8 @@
       (state.db.rotas || [])[0];
     if (!map || !rota) return;
 
+    state.publicRuntime.autoFollowGps = false;
+
     const coords =
       Array.isArray(rota.polyline) && rota.polyline.length > 1
         ? rota.polyline
@@ -5042,6 +5196,9 @@
 
     const bounds = new maplibregl.LngLatBounds(coords[0], coords[0]);
     coords.forEach((c) => bounds.extend(c));
+    if (state.publicRuntime.currentLat && state.publicRuntime.currentLng) {
+      bounds.extend([Number(state.publicRuntime.currentLng), Number(state.publicRuntime.currentLat)]);
+    }
     map.fitBounds(bounds, {
       padding: 60,
       pitch: state.publicRuntime.is3dPitch ? 65 : 0,
@@ -5060,7 +5217,7 @@
     if (state.maps.public3d) {
       state.maps.public3d.easeTo({
         pitch,
-        bearing: state.publicRuntime.is3dPitch ? -20 : 0,
+        bearing: state.publicRuntime.is3dPitch ? (state.publicRuntime.currentHeading || -20) : 0,
         duration: 600
       });
     }
@@ -5088,52 +5245,300 @@
   }
 
   /**
-   * Retorna a lista consolidada de quem vai descer e onde vai descer na rota selecionada,
-   * combinando passageiros cadastrados na rota + nomes adicionados diretamente nesta tela sem login.
+   * INICIAR ROTA (GPS AO VIVO) direto pelo Link Compartilhado:
+   * Permite que o motorista (ou usuário) inicie a rota com 1 toque para acompanhar o trajeto 3D
+   * de acordo com a localização GPS do celular em tempo real e transmitir a posição do ônibus na rota.
+   */
+  async function startPublicRouteGpsNavigation() {
+    const rota =
+      (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
+      (state.db.rotas || [])[0];
+    if (!rota) return;
+
+    if (!('geolocation' in navigator)) {
+      showToast('Seu navegador/aparelho não possui suporte a GPS.', 'warning');
+      return;
+    }
+
+    state.publicRuntime.isGpsRunning = true;
+    state.publicRuntime.autoFollowGps = true;
+    state.publicRuntime.is3dPitch = true;
+
+    // Mantém a tela do celular acesa durante o trajeto (Wake Lock API)
+    if ('wakeLock' in navigator) {
+      try {
+        state.publicRuntime.wakeLockSentinel = await navigator.wakeLock.request('screen');
+      } catch (e) {}
+    }
+
+    // Marca a rota como EM_ANDAMENTO
+    rota.status = 'EM_ANDAMENTO';
+
+    // Posição inicial padrão no 1º ponto enquanto o GPS fixa o satélite
+    if (!state.publicRuntime.currentLat && Array.isArray(rota.pontos) && rota.pontos[0]) {
+      state.publicRuntime.currentLat = Number(rota.pontos[0].lat);
+      state.publicRuntime.currentLng = Number(rota.pontos[0].lng);
+    }
+
+    const handlePublicGpsPos = (pos) => {
+      if (!pos || !pos.coords) return;
+      const newLat = Number(pos.coords.latitude.toFixed(6));
+      const newLng = Number(pos.coords.longitude.toFixed(6));
+      if (isLegacySaoPauloCoord(newLat, newLng)) return;
+
+      const prevLat = state.publicRuntime.currentLat;
+      const prevLng = state.publicRuntime.currentLng;
+      const movedMeters =
+        prevLat && prevLng ? calculateHaversineMeters(prevLat, prevLng, newLat, newLng) : 0;
+
+      state.publicRuntime.currentLat = newLat;
+      state.publicRuntime.currentLng = newLng;
+
+      if (pos.coords.speed !== null && !isNaN(pos.coords.speed) && pos.coords.speed >= 0) {
+        state.publicRuntime.currentSpeed = Math.round(pos.coords.speed * 3.6);
+      } else if (movedMeters > 3 && state.publicRuntime.lastPushMs > 0) {
+        const dtSec = Math.max(1, (Date.now() - state.publicRuntime.lastPushMs) / 1000);
+        state.publicRuntime.currentSpeed = Math.min(110, Math.round((movedMeters / dtSec) * 3.6));
+      }
+
+      if (pos.coords.heading !== null && !isNaN(pos.coords.heading) && pos.coords.heading >= 0) {
+        state.publicRuntime.currentHeading = Math.round(pos.coords.heading);
+      } else if (movedMeters >= 2 && prevLat && prevLng) {
+        state.publicRuntime.currentHeading = calculateBearingDegrees(prevLat, prevLng, newLat, newLng);
+      }
+
+      updatePublicBusMarkerAndCamera(false);
+
+      // Atualiza telemetria da rota a cada 3 segundos ou movimento >= 5m
+      const nowMs = Date.now();
+      if (nowMs - state.publicRuntime.lastPushMs >= 2500 || movedMeters >= 5) {
+        state.publicRuntime.lastPushMs = nowMs;
+        const snapshot = {
+          rotaId: rota.id,
+          motoristaId: rota.motoristaId || 'mot_link_gps',
+          veiculoId: rota.veiculoId || 'veic_101',
+          lat: newLat,
+          lng: newLng,
+          velocidade: state.publicRuntime.currentSpeed || 0,
+          heading: state.publicRuntime.currentHeading || 0,
+          statusRota: 'EM_ANDAMENTO',
+          proximoPontoId: rota.pontos && rota.pontos[0] ? rota.pontos[0].id : '',
+          updatedAt: new Date().toISOString()
+        };
+        const idx = state.db.telemetria.findIndex((t) => t.rotaId === rota.id);
+        if (idx >= 0) state.db.telemetria[idx] = snapshot;
+        else state.db.telemetria.push(snapshot);
+        saveLocalDb(false);
+        callGasApi({ action: 'pushTelemetry', ...snapshot });
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(handlePublicGpsPos, () => {}, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
+    });
+
+    if (state.publicRuntime.watchId !== null) {
+      navigator.geolocation.clearWatch(state.publicRuntime.watchId);
+    }
+
+    state.publicRuntime.watchId = navigator.geolocation.watchPosition(
+      handlePublicGpsPos,
+      (err) => console.warn('GPS rota pública aviso:', err),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+    );
+
+    renderPublicDropoffView(false);
+    updatePublicBusMarkerAndCamera(true);
+    showToast('Rota iniciada! O mapa 3D agora acompanha sua localização GPS em tempo real.', 'success');
+  }
+
+  async function stopPublicRouteGpsNavigation(notify = true) {
+    state.publicRuntime.isGpsRunning = false;
+    if (state.publicRuntime.watchId !== null) {
+      navigator.geolocation.clearWatch(state.publicRuntime.watchId);
+      state.publicRuntime.watchId = null;
+    }
+    if (state.publicRuntime.wakeLockSentinel) {
+      try {
+        await state.publicRuntime.wakeLockSentinel.release();
+      } catch (e) {}
+      state.publicRuntime.wakeLockSentinel = null;
+    }
+    state.publicRuntime.currentSpeed = 0;
+
+    const rota = (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId);
+    if (rota && notify) {
+      rota.status = 'PARADA';
+      const tel = state.db.telemetria.find((t) => t.rotaId === rota.id);
+      if (tel) {
+        tel.statusRota = 'PARADA';
+        tel.velocidade = 0;
+        tel.updatedAt = new Date().toISOString();
+        callGasApi({ action: 'pushTelemetry', ...tel });
+      }
+      saveLocalDb(false);
+    }
+
+    renderPublicDropoffView(false);
+    if (notify) {
+      showToast('Navegação GPS encerrada.', 'info');
+    }
+  }
+
+  function updatePublicBusMarkerAndCamera(forceRecenter = false) {
+    const map = state.maps.public3d;
+    if (!map) return;
+
+    const rota =
+      (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
+      (state.db.rotas || [])[0];
+
+    // Se o próprio celular iniciou o GPS, usa a posição GPS local; caso contrário, verifica se há telemetria ao vivo da rota
+    let lat = state.publicRuntime.isGpsRunning ? state.publicRuntime.currentLat : null;
+    let lng = state.publicRuntime.isGpsRunning ? state.publicRuntime.currentLng : null;
+    let speed = state.publicRuntime.currentSpeed || 0;
+    let heading = state.publicRuntime.currentHeading || 0;
+
+    if ((!lat || !lng) && rota) {
+      const tel = (state.db.telemetria || []).find((t) => t.rotaId === rota.id);
+      if (tel && tel.lat && tel.lng && (rota.status === 'EM_ANDAMENTO' || tel.statusRota === 'EM_ANDAMENTO')) {
+        lat = Number(tel.lat);
+        lng = Number(tel.lng);
+        speed = Number(tel.velocidade || 0);
+        heading = Number(tel.heading || 0);
+      }
+    }
+
+    const speedBadge = document.getElementById('public-gps-speed-badge');
+    if (speedBadge) {
+      if (state.publicRuntime.isGpsRunning || (rota && rota.status === 'EM_ANDAMENTO')) {
+        speedBadge.classList.remove('hidden');
+        speedBadge.textContent = `${Math.round(speed)} km/h`;
+      } else {
+        speedBadge.classList.add('hidden');
+      }
+    }
+
+    if (!lat || !lng) {
+      if (state.markers.publicBus) {
+        state.markers.publicBus.remove();
+        state.markers.publicBus = null;
+      }
+      return;
+    }
+
+    const lngLat = [Number(lng), Number(lat)];
+    if (!state.markers.publicBus) {
+      const busEl = document.createElement('div');
+      busEl.className = 'cymi-bus-marker';
+      busEl.innerHTML = `
+        <div class="cymi-bus-pulse"></div>
+        <div class="cymi-bus-marker-inner">🚌</div>
+      `;
+      state.markers.publicBus = new maplibregl.Marker({ element: busEl })
+        .setLngLat(lngLat)
+        .addTo(map);
+    } else {
+      state.markers.publicBus.setLngLat(lngLat);
+    }
+
+    if (forceRecenter) {
+      state.publicRuntime.autoFollowGps = true;
+    }
+
+    if (forceRecenter || (state.publicRuntime.isGpsRunning && state.publicRuntime.autoFollowGps)) {
+      map.easeTo({
+        center: lngLat,
+        pitch: state.publicRuntime.is3dPitch ? 65 : 0,
+        bearing: state.publicRuntime.is3dPitch ? Number(heading || 0) : 0,
+        zoom: forceRecenter ? 16.3 : Math.max(map.getZoom(), 15.4),
+        duration: 800
+      });
+    }
+  }
+
+  /**
+   * Retorna a lista consolidada de todas as pessoas cadastradas nos pontos da rota selecionada,
+   * combinando:
+   * 1. Nomes gravados diretamente nos pontos da rota (`rota.pontos[].pessoas` sincronizados na nuvem/link)
+   * 2. Nomes salvos no armazenamento manual local
+   * 3. Funcionários/passageiros cadastrados no sistema vinculados à rota ou aos pontos dela
    */
   function getDropoffEntriesForRoute(rota) {
     if (!rota) return [];
     const stops = getBoardingStopsOnly(rota);
     const isVolta = getRouteDirectionType(rota) === 'VOLTA';
-    const manualList = loadPublicManualDropoffs().filter((m) => m.routeId === rota.id);
+    const entries = [];
+    const seenKey = new Set();
 
-    // 1. Nomes anotados manualmente na tela pública
-    const entries = manualList.map((m) => {
-      const st = stops.find((s) => s.id === m.stopId) || stops[0] || null;
-      return {
-        id: m.id,
-        nome: m.nome,
-        stopId: st ? st.id : m.stopId,
-        stopName: st ? st.nome : m.stopName || 'Ponto selecionado',
-        source: 'MANUAL',
-        userId: m.userId || ''
-      };
+    const addEntry = (id, nome, stopObj, source, userId = '') => {
+      const cleanName = String(nome || '').trim();
+      if (!cleanName || !stopObj) return;
+      const key = `${cleanName.toLowerCase()}__${stopObj.id}`;
+      if (seenKey.has(key)) return;
+      seenKey.add(cleanName.toLowerCase());
+      entries.push({
+        id: id || `entry_${stopObj.id}_${entries.length}`,
+        nome: cleanName,
+        stopId: stopObj.id,
+        stopName: stopObj.nome,
+        source,
+        userId
+      });
+    };
+
+    // 1. Nomes salvos diretamente dentro de cada ponto da rota (vem do Google Sheets e do Link compartilhado)
+    stops.forEach((st) => {
+      if (Array.isArray(st.pessoas)) {
+        st.pessoas.forEach((p, idx) => {
+          const pName = typeof p === 'string' ? p : p && p.nome ? p.nome : '';
+          const pId = (p && p.id) || `ptpax_${st.id}_${idx}`;
+          const pUserId = (p && p.userId) || '';
+          addEntry(pId, pName, st, 'PONTO_ROTA', pUserId);
+        });
+      }
     });
 
-    // 2. Passageiros cadastrados no sistema que estão marcados como VOU e vinculados a esta rota
-    const manualNamesSet = new Set(entries.map((e) => String(e.nome).trim().toLowerCase()));
-    const registeredPax = (state.db.usuarios || []).filter((u) => u.perfil === 'PASSAGEIRO' && u.statusEmbarque !== 'NAO_VOU');
+    // 2. Nomes anotados manualmente no navegador local
+    const manualList = loadPublicManualDropoffs().filter((m) => m.routeId === rota.id);
+    manualList.forEach((m) => {
+      const st = stops.find((s) => s.id === m.stopId) || stops[0] || null;
+      addEntry(m.id, m.nome, st, 'MANUAL', m.userId || '');
+    });
+
+    // 3. Passageiros cadastrados na aba Funcionários/Usuários vinculados a esta rota ou a qualquer ponto dela
+    const registeredPax = (state.db.usuarios || []).filter(
+      (u) => u.perfil === 'PASSAGEIRO' && u.statusEmbarque !== 'NAO_VOU'
+    );
 
     registeredPax.forEach((p) => {
       const paxRouteId = isVolta ? p.rotaVoltaId || p.rotaId : p.rotaIdaId || p.rotaId;
       const paxStopId = isVolta ? p.pontoVoltaId || p.pontoId : p.pontoIdaId || p.pontoId;
-      const stopInThisRoute = stops.find((s) => s.id === paxStopId);
+      const stopInThisRoute =
+        stops.find((s) => s.id === paxStopId) ||
+        stops.find((s) => s.id === p.pontoId) ||
+        stops.find((s) => s.id === p.pontoVoltaId) ||
+        stops.find((s) => s.id === p.pontoIdaId);
 
-      // Mostra passageiros que escolheram um ponto desta rota ou cuja rota vinculada é esta
-      if (paxRouteId !== rota.id && !stopInThisRoute) return;
-      if (manualNamesSet.has(String(p.nome).trim().toLowerCase())) return;
+      if (paxRouteId !== rota.id && p.rotaId !== rota.id && !stopInThisRoute) return;
 
-      const resolvedStop = stopInThisRoute || stops[0] || null;
+      let resolvedStop = stopInThisRoute;
+      if (!resolvedStop && p.lat && p.lng && stops.length > 0) {
+        let minD = Infinity;
+        stops.forEach((pt) => {
+          const d = calculateHaversineMeters(Number(p.lat), Number(p.lng), Number(pt.lat), Number(pt.lng));
+          if (d < minD) {
+            minD = d;
+            resolvedStop = pt;
+          }
+        });
+      }
+      if (!resolvedStop) resolvedStop = stops[0] || null;
       if (!resolvedStop) return;
 
-      entries.push({
-        id: `pax_${p.id}`,
-        nome: p.nome,
-        stopId: resolvedStop.id,
-        stopName: resolvedStop.nome,
-        source: 'CADASTRADO',
-        userId: p.id
-      });
+      addEntry(`pax_${p.id}`, p.nome, resolvedStop, 'CADASTRADO', p.id);
     });
 
     return entries;
@@ -5151,32 +5556,58 @@
     state.publicRuntime.activeRouteId = rota.id;
     const sentido = getRouteDirectionType(rota);
     const isVolta = sentido === 'VOLTA';
-    const isLive = rota.status === 'EM_ANDAMENTO';
+    const isLive = rota.status === 'EM_ANDAMENTO' || state.publicRuntime.isGpsRunning;
     const stops = getBoardingStopsOnly(rota);
+
+    // Se foi aberto pelo link compartilhado (?rota=...), ativa modo SOMENTE LEITURA (sem opções de editar)
+    const isReadOnly = Boolean(state.publicRuntime.isReadOnlySharedLink);
 
     const titleEl = document.getElementById('public-route-title');
     if (titleEl) titleEl.textContent = `[${sentido}] ${rota.nome}`;
 
+    const modePillEl = document.getElementById('public-mode-pill');
+    if (modePillEl) {
+      modePillEl.textContent = isReadOnly
+        ? 'Rota & Passageiros nos Pontos'
+        : 'Modo Editor • Configure e Copie o Link';
+    }
+
     const badgeEl = document.getElementById('public-route-status-badge');
     if (badgeEl) {
       badgeEl.className = `status-pill ${isLive ? 'live' : 'idle'}`;
-      badgeEl.textContent = isLive ? 'ROTA ABERTA AO VIVO' : `ROTA DE ${sentido}`;
+      badgeEl.textContent = isLive ? 'EM TRÂNSITO (GPS AO VIVO)' : `ROTA DE ${sentido}`;
     }
 
-    // Se o link contém ?rota=... (lockedId), oculta a lista de todas as rotas para que a pessoa veja SOMENTE a rota do link enviado
-    const isLockedByLink = Boolean(lockedId);
+    // Sincroniza botões de Iniciar Rota (GPS Ao Vivo) vs Encerrar Navegação GPS
+    const btnStartGps = document.getElementById('btn-public-start-gps-route');
+    const btnStopGps = document.getElementById('btn-public-stop-gps-route');
+    const btnRecenterGps = document.getElementById('btn-public-recenter-gps');
+    if (state.publicRuntime.isGpsRunning) {
+      btnStartGps?.classList.add('hidden');
+      btnStopGps?.classList.remove('hidden');
+      btnRecenterGps?.classList.remove('hidden');
+    } else {
+      btnStartGps?.classList.remove('hidden');
+      btnStopGps?.classList.add('hidden');
+      btnRecenterGps?.classList.add('hidden');
+    }
+
+    // Oculta formulário de edição, seletor de outras rotas e botões administrativos quando aberto via link compartilhado
     const pickerBox = document.getElementById('public-route-picker-box');
     const backLoginBtn = document.getElementById('btn-public-back-login');
-    if (pickerBox) {
-      pickerBox.classList.toggle('hidden', isLockedByLink);
-    }
-    if (backLoginBtn) {
-      backLoginBtn.classList.toggle('hidden', isLockedByLink && !state.currentUser);
-    }
+    const copyLinkBtn = document.getElementById('btn-public-copy-link');
+    const editorCard = document.getElementById('public-admin-editor-card');
+    const clearListBtn = document.getElementById('btn-public-clear-list');
 
-    // 1. Botões de escolha de rota (visíveis apenas quando você entra no painel para escolher qual rota quer copiar o link)
+    if (pickerBox) pickerBox.classList.toggle('hidden', isReadOnly);
+    if (editorCard) editorCard.classList.toggle('hidden', isReadOnly);
+    if (clearListBtn) clearListBtn.classList.toggle('hidden', isReadOnly);
+    if (copyLinkBtn) copyLinkBtn.classList.toggle('hidden', isReadOnly);
+    if (backLoginBtn) backLoginBtn.classList.toggle('hidden', isReadOnly && !state.currentUser);
+
+    // 1. Botões de escolha de rota (visíveis apenas para o Admin no modo Editor)
     const btnsEl = document.getElementById('public-route-buttons');
-    if (btnsEl && !isLockedByLink) {
+    if (btnsEl && !isReadOnly) {
       btnsEl.innerHTML = routes
         .map((r) => {
           const rVolta = getRouteDirectionType(r) === 'VOLTA';
@@ -5200,7 +5631,7 @@
               }">${rVolta ? 'ROTA DE VOLTA' : 'ROTA DE IDA'}</span>
               <span class="block text-xs font-bold text-white truncate">${r.nome}</span>
             </span>
-            <span class="status-pill ${rOpen ? 'live' : 'idle'} !text-[10px]">${rOpen ? 'AO VIVO' : `${(r.pontos || []).length} paradas`}</span>
+            <span class="status-pill ${rOpen ? 'live' : 'idle'} !text-[10px]">${rOpen ? 'AO VIVO' : `${getBoardingStopsOnly(r).length} paradas`}</span>
           </button>`;
         })
         .join('');
@@ -5213,37 +5644,38 @@
       });
     }
 
-    // 2. Autocomplete com nomes dos passageiros cadastrados (mas aceita qualquer nome livre digitado)
-    const datalistEl = document.getElementById('public-passengers-datalist');
-    if (datalistEl) {
-      const paxUsers = (state.db.usuarios || []).filter((u) => u.perfil === 'PASSAGEIRO');
-      datalistEl.innerHTML = paxUsers.map((u) => `<option value="${u.nome}"></option>`).join('');
-    }
-
-    // 3. Select de pontos onde irá descer
+    // 2. Autocomplete e Select de pontos (usados apenas no Modo Editor)
     const selectStopEl = document.getElementById('public-select-stop');
-    const prevSelectedStop = selectStopEl ? selectStopEl.value : '';
-    if (selectStopEl) {
-      selectStopEl.innerHTML =
-        stops
-          .map(
-            (pt, idx) =>
-              `<option value="${pt.id}">Parada ${idx + 1} — ${pt.nome}</option>`
-          )
-          .join('') || '<option value="">Sem paradas nesta rota</option>';
-      if (prevSelectedStop && stops.some((s) => s.id === prevSelectedStop)) {
-        selectStopEl.value = prevSelectedStop;
+    if (!isReadOnly) {
+      const datalistEl = document.getElementById('public-passengers-datalist');
+      if (datalistEl) {
+        const paxUsers = (state.db.usuarios || []).filter((u) => u.perfil === 'PASSAGEIRO');
+        datalistEl.innerHTML = paxUsers.map((u) => `<option value="${u.nome}"></option>`).join('');
+      }
+
+      const prevSelectedStop = selectStopEl ? selectStopEl.value : '';
+      if (selectStopEl) {
+        selectStopEl.innerHTML =
+          stops
+            .map(
+              (pt, idx) =>
+                `<option value="${pt.id}">Parada ${idx + 1} — ${pt.nome}</option>`
+            )
+            .join('') || '<option value="">Sem paradas nesta rota</option>';
+        if (prevSelectedStop && stops.some((s) => s.id === prevSelectedStop)) {
+          selectStopEl.value = prevSelectedStop;
+        }
       }
     }
 
-    // 4. Lista consolidada de quem vai descer e onde
+    // 3. Lista consolidada de pessoas cadastradas nos pontos da rota
     const entries = getDropoffEntriesForRoute(rota);
     const summaryEl = document.getElementById('public-dropoff-summary');
     if (summaryEl) {
-      summaryEl.textContent = `${entries.length} pessoa(s) na lista de descida desta rota`;
+      summaryEl.textContent = `${entries.length} pessoa(s) cadastrada(s) nos pontos desta rota`;
     }
 
-    // Resumo por parada (mostrando os nomes que descem em cada ponto + botão de editar nome do ponto)
+    // 4. Resumo por ponto de parada (mostrando os nomes cadastrados em cada ponto; sem botões de editar no link compartilhado)
     const stopsSummaryEl = document.getElementById('public-stops-summary-list');
     if (stopsSummaryEl) {
       stopsSummaryEl.innerHTML = stops
@@ -5251,7 +5683,7 @@
           const peopleHere = entries.filter((e) => e.stopId === pt.id);
           const hasPeople = peopleHere.length > 0;
           return `
-            <div data-public-focus-stop="${pt.id}" class="p-2.5 rounded-xl border transition cursor-pointer ${
+            <div data-public-focus-stop="${pt.id}" class="p-3 rounded-xl border transition cursor-pointer ${
               hasPeople
                 ? 'bg-amber-500/10 border-amber-500/40 hover:border-amber-400'
                 : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
@@ -5264,57 +5696,68 @@
                   <span class="text-xs font-bold text-white truncate">${pt.nome}</span>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button type="button" data-public-rename-stop="${pt.id}" class="px-2 py-0.5 rounded-md bg-slate-800/90 hover:bg-sky-500/20 border border-slate-700 hover:border-sky-400 text-[10px] font-bold text-sky-300 flex items-center gap-1" title="Alterar nome deste ponto de parada">
-                    <i data-lucide="pencil" class="w-2.5 h-2.5"></i>
-                    <span>Editar Ponto</span>
-                  </button>
+                  ${
+                    !isReadOnly
+                      ? `<button type="button" data-public-rename-stop="${pt.id}" class="px-2 py-0.5 rounded-md bg-slate-800/90 hover:bg-sky-500/20 border border-slate-700 hover:border-sky-400 text-[10px] font-bold text-sky-300 flex items-center gap-1" title="Alterar nome deste ponto de parada">
+                          <i data-lucide="pencil" class="w-2.5 h-2.5"></i>
+                          <span>Renomear</span>
+                        </button>`
+                      : ''
+                  }
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                     hasPeople ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
-                  }">${peopleHere.length} desce(m)</span>
+                  }">${peopleHere.length} pessoa(s)</span>
                 </div>
               </div>
               ${
                 hasPeople
-                  ? `<div class="mt-1.5 pl-8 flex flex-wrap gap-1">${peopleHere
-                      .map(
-                        (person) =>
-                          `<button type="button" data-public-edit-chip="${person.id}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/90 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 text-[11px] font-semibold text-amber-200 transition" title="Toque para editar o nome ou ponto de ${person.nome}">
-                            <i data-lucide="user" class="w-3 h-3 text-amber-400"></i>
-                            <span>${person.nome}</span>
-                            <i data-lucide="pencil" class="w-2.5 h-2.5 text-sky-300 ml-0.5"></i>
-                          </button>`
+                  ? `<div class="mt-2 pl-8 flex flex-wrap gap-1.5">${peopleHere
+                      .map((person) =>
+                        isReadOnly
+                          ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/90 border border-amber-500/40 text-xs font-bold text-amber-200">
+                              <i data-lucide="user" class="w-3.5 h-3.5 text-amber-400"></i>
+                              <span>${person.nome}</span>
+                            </span>`
+                          : `<button type="button" data-public-edit-chip="${person.id}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/90 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 text-[11px] font-semibold text-amber-200 transition" title="Toque para editar ${person.nome}">
+                              <i data-lucide="user" class="w-3 h-3 text-amber-400"></i>
+                              <span>${person.nome}</span>
+                              <i data-lucide="pencil" class="w-2.5 h-2.5 text-sky-300 ml-0.5"></i>
+                            </button>`
                       )
                       .join('')}</div>`
-                  : ''
+                  : `<div class="mt-1 pl-8 text-[11px] text-slate-500">Nenhuma pessoa cadastrada neste ponto</div>`
               }
             </div>
           `;
         })
         .join('');
 
-      stopsSummaryEl.querySelectorAll('[data-public-rename-stop]').forEach((btn) => {
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          const stId = btn.getAttribute('data-public-rename-stop');
-          promptRenamePublicStop(stId);
+      if (!isReadOnly) {
+        stopsSummaryEl.querySelectorAll('[data-public-rename-stop]').forEach((btn) => {
+          btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const stId = btn.getAttribute('data-public-rename-stop');
+            promptRenamePublicStop(stId);
+          });
         });
-      });
 
-      stopsSummaryEl.querySelectorAll('[data-public-edit-chip]').forEach((chip) => {
-        chip.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          const entryId = chip.getAttribute('data-public-edit-chip');
-          const found = entries.find((e) => e.id === entryId);
-          if (found) startEditingPublicDropoffEntry(found);
+        stopsSummaryEl.querySelectorAll('[data-public-edit-chip]').forEach((chip) => {
+          chip.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const entryId = chip.getAttribute('data-public-edit-chip');
+            const found = entries.find((e) => e.id === entryId);
+            if (found) startEditingPublicDropoffEntry(found);
+          });
         });
-      });
+      }
 
       stopsSummaryEl.querySelectorAll('[data-public-focus-stop]').forEach((card) => {
         card.addEventListener('click', () => {
           const stId = card.getAttribute('data-public-focus-stop');
-          if (selectStopEl) selectStopEl.value = stId;
+          if (!isReadOnly && selectStopEl) selectStopEl.value = stId;
           const pt = stops.find((s) => s.id === stId);
           if (pt && state.maps.public3d) {
+            state.publicRuntime.autoFollowGps = false;
             state.maps.public3d.flyTo({
               center: [Number(pt.lng), Number(pt.lat)],
               zoom: 16.5,
@@ -5326,13 +5769,13 @@
       });
     }
 
-    // Lista individual de pessoas com botão para Editar nome/ponto ou Remover
+    // 5. Lista individual de pessoas cadastradas (somente leitura quando aberto pelo link compartilhado)
     const peopleListEl = document.getElementById('public-dropoff-people-list');
     if (peopleListEl) {
       if (entries.length === 0) {
         peopleListEl.innerHTML = `
           <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
-            Nenhum nome anotado ainda nesta rota. Digite o nome acima e escolha o ponto onde irá descer.
+            Nenhuma pessoa cadastrada nos pontos desta rota ainda.
           </div>
         `;
       } else {
@@ -5340,49 +5783,74 @@
           .map((item) => {
             const stopIdx = stops.findIndex((s) => s.id === item.stopId);
             const badgeP = stopIdx >= 0 ? `P${stopIdx + 1}` : 'Ponto';
+            const stopActionLabel = isVolta ? 'Desce em' : 'Ponto';
             return `
-              <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2">
+              <div data-public-focus-person-stop="${item.stopId}" class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:border-slate-700 transition">
                 <div class="flex items-center gap-2.5 min-w-0">
                   <span class="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-xs font-extrabold shrink-0">${badgeP}</span>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-white truncate">${item.nome}</div>
-                    <div class="text-[11px] text-emerald-300 truncate">Desce em: <strong>${item.stopName}</strong></div>
+                    <div class="text-[11px] text-emerald-300 truncate">${stopActionLabel}: <strong>${item.stopName}</strong></div>
                   </div>
                 </div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                  <button type="button" data-public-edit-entry="${item.id}" class="btn-secondary !py-1 !px-2 text-[11px] text-sky-300 border-sky-500/40" title="Editar nome ou trocar ponto de descida">
-                    Editar
-                  </button>
-                  <button type="button" data-public-remove-entry="${item.id}" data-public-remove-user="${item.userId || ''}" class="btn-secondary !py-1 !px-2 text-[11px] text-rose-300 border-rose-500/30" title="Remover da lista de descida">
-                    Remover
-                  </button>
-                </div>
+                ${
+                  !isReadOnly
+                    ? `<div class="flex items-center gap-1.5 shrink-0">
+                        <button type="button" data-public-edit-entry="${item.id}" class="btn-secondary !py-1 !px-2 text-[11px] text-sky-300 border-sky-500/40" title="Editar nome ou trocar ponto">
+                          Editar
+                        </button>
+                        <button type="button" data-public-remove-entry="${item.id}" data-public-remove-user="${item.userId || ''}" class="btn-secondary !py-1 !px-2 text-[11px] text-rose-300 border-rose-500/30" title="Remover">
+                          Remover
+                        </button>
+                      </div>`
+                    : `<span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold shrink-0">Confirmado</span>`
+                }
               </div>
             `;
           })
           .join('');
 
-        peopleListEl.querySelectorAll('[data-public-edit-entry]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const entryId = btn.getAttribute('data-public-edit-entry');
-            const found = entries.find((e) => e.id === entryId);
-            if (found) startEditingPublicDropoffEntry(found);
+        peopleListEl.querySelectorAll('[data-public-focus-person-stop]').forEach((row) => {
+          row.addEventListener('click', () => {
+            const stId = row.getAttribute('data-public-focus-person-stop');
+            const pt = stops.find((s) => s.id === stId);
+            if (pt && state.maps.public3d) {
+              state.publicRuntime.autoFollowGps = false;
+              state.maps.public3d.flyTo({
+                center: [Number(pt.lng), Number(pt.lat)],
+                zoom: 16.5,
+                pitch: state.publicRuntime.is3dPitch ? 65 : 0,
+                duration: 650
+              });
+            }
           });
         });
 
-        peopleListEl.querySelectorAll('[data-public-remove-entry]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const entryId = btn.getAttribute('data-public-remove-entry');
-            const userId = btn.getAttribute('data-public-remove-user');
-            removePublicDropoffEntry(entryId, userId);
+        if (!isReadOnly) {
+          peopleListEl.querySelectorAll('[data-public-edit-entry]').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              const entryId = btn.getAttribute('data-public-edit-entry');
+              const found = entries.find((e) => e.id === entryId);
+              if (found) startEditingPublicDropoffEntry(found);
+            });
           });
-        });
+
+          peopleListEl.querySelectorAll('[data-public-remove-entry]').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              const entryId = btn.getAttribute('data-public-remove-entry');
+              const userId = btn.getAttribute('data-public-remove-user');
+              removePublicDropoffEntry(entryId, userId);
+            });
+          });
+        }
       }
     }
 
     refreshIcons();
 
-    // 5. Atualiza Mapa 3D / Satélite com o trajeto e os pinos mostrando quem desce em cada parada
+    // 6. Atualiza Mapa 3D / Satélite com o trajeto, pinos das paradas com os nomes e marcador GPS ao vivo
     const map = state.maps.public3d;
     if (!map || !map.getSource('public-route-source')) return;
 
@@ -5417,15 +5885,19 @@
           <span>P${idx + 1} • ${pt.nome}</span>
           ${
             peopleHere.length > 0
-              ? `<span class="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px]">${peopleHere.length} desce(m): ${namesPreview}</span>`
+              ? `<span class="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px]">${peopleHere.length}: ${namesPreview}</span>`
               : ''
           }
         </div>
         <div class="cymi-stop-pin" style="${peopleHere.length > 0 ? 'background:#f59e0b;' : ''}"></div>
       `;
       el.addEventListener('click', () => {
-        if (selectStopEl) selectStopEl.value = pt.id;
-        showToast(`Ponto selecionado para descida: P${idx + 1} — ${pt.nome}`, 'info');
+        if (!isReadOnly && selectStopEl) selectStopEl.value = pt.id;
+        const msg =
+          peopleHere.length > 0
+            ? `P${idx + 1} (${pt.nome}): ${namesPreview}`
+            : `P${idx + 1} — ${pt.nome}`;
+        showToast(msg, 'info');
       });
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
@@ -5434,12 +5906,15 @@
       state.markers.publicStops.push(marker);
     });
 
-    if (fitBoundsNow) {
+    updatePublicBusMarkerAndCamera(false);
+
+    if (fitBoundsNow && !state.publicRuntime.isGpsRunning) {
       fitPublicMapToActiveRoute();
     }
   }
 
   function startEditingPublicDropoffEntry(entry) {
+    if (state.publicRuntime.isReadOnlySharedLink) return;
     const nameInput = document.getElementById('public-input-name');
     const stopSelect = document.getElementById('public-select-stop');
     const editIdInput = document.getElementById('public-editing-entry-id');
@@ -5478,12 +5953,13 @@
     if (editIdInput) editIdInput.value = '';
     if (editUserInput) editUserInput.value = '';
     if (nameInput) nameInput.value = '';
-    if (submitLabel) submitLabel.textContent = 'Adicionar à Lista de Descida';
-    if (headingText) headingText.textContent = 'Adicionar Quem Irá Descer e Onde Irá Descer';
+    if (submitLabel) submitLabel.textContent = 'Salvar Nome no Ponto';
+    if (headingText) headingText.textContent = 'Cadastrar Pessoas nos Pontos (Modo Editor)';
     cancelBtn?.classList.add('hidden');
   }
 
   async function promptRenamePublicStop(stopIdParam = '') {
+    if (state.publicRuntime.isReadOnlySharedLink) return;
     const rota =
       (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
       (state.db.rotas || [])[0];
@@ -5508,7 +5984,6 @@
     stopObj.nome = trimmed;
     rota.updatedAt = new Date().toISOString();
 
-    // Atualiza também o nome salvo nas anotações manuais que usam este ponto
     const manualList = loadPublicManualDropoffs().map((item) => {
       if (item.routeId === rota.id && item.stopId === stopObj.id) {
         return { ...item, stopName: trimmed };
@@ -5517,19 +5992,15 @@
     });
     savePublicManualDropoffs(manualList);
 
-    saveLocalDb();
+    await syncRouteStopsPeopleToCloud(rota);
     renderPublicDropoffView(false);
     showToast(`Nome do ponto atualizado para: "${trimmed}"`, 'success');
-
-    await callGasApi({
-      action: 'upsertEntity',
-      sheet: 'Rotas',
-      record: rota
-    });
   }
 
   async function handlePublicDropoffSubmit(e) {
     e.preventDefault();
+    if (state.publicRuntime.isReadOnlySharedLink) return;
+
     const nameInput = document.getElementById('public-input-name');
     const stopSelect = document.getElementById('public-select-stop');
     const editIdInput = document.getElementById('public-editing-entry-id');
@@ -5544,7 +6015,7 @@
       (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
       (state.db.rotas || [])[0];
     if (!rota || !nome || !stopId) {
-      showToast('Informe o nome e escolha o ponto onde irá descer.', 'warning');
+      showToast('Informe o nome e escolha o ponto de parada.', 'warning');
       return;
     }
 
@@ -5577,6 +6048,17 @@
       callGasApi({
         action: 'updatePassengerProfile',
         user: matchedPax
+      });
+    }
+
+    // Atualiza também qualquer referência anterior em rota.pontos[].pessoas caso estivesse editando
+    if (editingEntryId && Array.isArray(rota.pontos)) {
+      rota.pontos.forEach((pt) => {
+        if (Array.isArray(pt.pessoas)) {
+          pt.pessoas = pt.pessoas.filter(
+            (p) => p.id !== editingEntryId && String(p.nome || '').trim().toLowerCase() !== nome.toLowerCase()
+          );
+        }
       });
     }
 
@@ -5620,24 +6102,47 @@
     }
     savePublicManualDropoffs(manualList);
 
+    // Persiste os nomes dentro de rota.pontos[].pessoas na nuvem (Google Sheets) para aparecer em todos os links compartilhados
+    await syncRouteStopsPeopleToCloud(rota);
+
     cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
     showToast(
       editingEntryId
         ? `Dados atualizados: ${nome} -> ${chosenStop.nome}`
-        : `${nome} adicionado(a) para descer em: ${chosenStop.nome}`,
+        : `${nome} cadastrado(a) no ponto: ${chosenStop.nome}`,
       'success'
     );
   }
 
-  function removePublicDropoffEntry(entryId, userId) {
+  async function removePublicDropoffEntry(entryId, userId) {
+    if (state.publicRuntime.isReadOnlySharedLink) return;
     const rota =
       (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
       (state.db.rotas || [])[0];
     if (!rota) return;
 
-    const filtered = loadPublicManualDropoffs().filter((m) => m.id !== entryId);
+    const entries = getDropoffEntriesForRoute(rota);
+    const targetEntry = entries.find((e) => e.id === entryId);
+
+    const filtered = loadPublicManualDropoffs().filter(
+      (m) =>
+        m.id !== entryId &&
+        !(targetEntry && m.routeId === rota.id && String(m.nome).trim().toLowerCase() === targetEntry.nome.toLowerCase())
+    );
     savePublicManualDropoffs(filtered);
+
+    if (Array.isArray(rota.pontos)) {
+      rota.pontos.forEach((pt) => {
+        if (Array.isArray(pt.pessoas)) {
+          pt.pessoas = pt.pessoas.filter(
+            (p) =>
+              p.id !== entryId &&
+              !(targetEntry && String(p.nome || '').trim().toLowerCase() === targetEntry.nome.toLowerCase())
+          );
+        }
+      });
+    }
 
     if (userId) {
       const pax = (state.db.usuarios || []).find((u) => u.id === userId);
@@ -5652,12 +6157,14 @@
       }
     }
 
+    await syncRouteStopsPeopleToCloud(rota);
     cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
-    showToast('Removido da lista de descida.', 'info');
+    showToast('Removido do ponto da rota.', 'info');
   }
 
-  function clearPublicManualDropoffsForActiveRoute() {
+  async function clearPublicManualDropoffsForActiveRoute() {
+    if (state.publicRuntime.isReadOnlySharedLink) return;
     const rota =
       (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
       (state.db.rotas || [])[0];
@@ -5665,9 +6172,15 @@
 
     const remaining = loadPublicManualDropoffs().filter((m) => m.routeId !== rota.id);
     savePublicManualDropoffs(remaining);
+    if (Array.isArray(rota.pontos)) {
+      rota.pontos.forEach((pt) => {
+        pt.pessoas = [];
+      });
+    }
+    await syncRouteStopsPeopleToCloud(rota);
     cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
-    showToast('Anotações manuais desta rota foram limpas.', 'info');
+    showToast('Lista manual desta rota foi limpa.', 'info');
   }
 
   /* ==========================================================================
@@ -6596,13 +7109,19 @@
       }
     });
 
-    // Painel Público Sem Login (Rotas 3D / Satélite + Quem Vai Descer e Onde)
+    // Painel Público Sem Login (Rotas 3D / Satélite + Pessoas nos Pontos + Iniciar Rota GPS)
     document.getElementById('btn-open-public-dropoff')?.addEventListener('click', () => openPublicDropoffView());
     document.getElementById('btn-header-open-public-dropoff')?.addEventListener('click', () => openPublicDropoffView());
     document.getElementById('btn-public-back-login')?.addEventListener('click', closePublicDropoffView);
     document.getElementById('btn-public-toggle-3d')?.addEventListener('click', togglePublicMap3dPitch);
     document.getElementById('btn-public-fit-route')?.addEventListener('click', fitPublicMapToActiveRoute);
     document.getElementById('btn-public-fullscreen')?.addEventListener('click', togglePublicMapFullscreen);
+    document.getElementById('btn-public-start-gps-route')?.addEventListener('click', startPublicRouteGpsNavigation);
+    document.getElementById('btn-public-stop-gps-route')?.addEventListener('click', () => stopPublicRouteGpsNavigation(true));
+    document.getElementById('btn-public-recenter-gps')?.addEventListener('click', () => {
+      updatePublicBusMarkerAndCamera(true);
+      showToast('Mapa 3D centralizado na sua localização GPS.', 'success');
+    });
     document.getElementById('form-public-dropoff')?.addEventListener('submit', handlePublicDropoffSubmit);
     document.getElementById('btn-public-cancel-edit')?.addEventListener('click', cancelEditingPublicDropoffEntry);
     document.getElementById('btn-public-rename-selected-stop')?.addEventListener('click', () => promptRenamePublicStop());
@@ -6613,7 +7132,7 @@
       try {
         await navigator.clipboard.writeText(url);
         showToast(
-          `Link copiado! Quem abrir verá SOMENTE a rota "${rObj ? rObj.nome : 'selecionada'}".`,
+          `Link copiado com todos os nomes dos pontos! Quem abrir verá somente a rota "${rObj ? rObj.nome : 'selecionada'}" (sem edição).`,
           'success'
         );
       } catch (e) {
@@ -6672,16 +7191,18 @@
     // Verifica se abriu direto pelo link público sem login (?painel=descida ou ?descida=1 ou ?rota=...)
     const startParams = new URLSearchParams(window.location.search);
     const paramRota = startParams.get('rota') || '';
+    const paramDados = startParams.get('dados') || '';
     const openedViaPublicDropoffLink =
       startParams.get('painel') === 'descida' ||
       startParams.get('descida') === '1' ||
-      startParams.get('publico') === '1';
+      startParams.get('publico') === '1' ||
+      Boolean(paramRota);
 
     // Verifica se o funcionário abriu o Link de Convite de Autocadastro (?cadastro=1)
     const openedViaInviteLink = !openedViaPublicDropoffLink && checkInviteLinkOnStartup();
 
     if (openedViaPublicDropoffLink) {
-      openPublicDropoffView(paramRota, Boolean(paramRota));
+      openPublicDropoffView(paramRota, true);
     } else if (!openedViaInviteLink) {
       // Se não for link de cadastro nem painel público e já houver sessão salva ("Lembrar-me"), entra direto no painel
       checkExistingSession();
@@ -6695,6 +7216,10 @@
         const params = new URLSearchParams(window.location.search);
         populateSelfSignupRouteAndStops(params.get('rota') || '');
       } else if (state.publicRuntime.isOpen) {
+        if (paramDados) {
+          const activeRota = (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId);
+          if (activeRota) applyUrlPeopleSnapshotToRoute(activeRota, paramDados);
+        }
         renderPublicDropoffView(true);
       }
     }
