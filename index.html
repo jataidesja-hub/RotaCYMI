@@ -1130,15 +1130,18 @@
 
         <!-- Formulário Rápido: Nome + Ponto onde vai descer -->
         <div class="card-surface p-4 border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 to-slate-900/90">
-          <h3 class="text-xs font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5 mb-1">
+          <h3 id="public-form-heading" class="text-xs font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5 mb-1">
             <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
-            <span>Adicionar Quem Irá Descer e Onde Irá Descer</span>
+            <span id="public-form-heading-text">Adicionar Quem Irá Descer e Onde Irá Descer</span>
           </h3>
           <p class="text-[11px] text-slate-400 mb-3">
-            Digite o nome (ou escolha da lista) e selecione o ponto de descida. Você também pode clicar direto no ponto no mapa.
+            Digite o nome (ou escolha da lista) e selecione o ponto de descida. Você também pode editar nomes já adicionados e renomear qualquer parada abaixo.
           </p>
 
           <form id="form-public-dropoff" class="space-y-3">
+            <input type="hidden" id="public-editing-entry-id" value="" />
+            <input type="hidden" id="public-editing-user-id" value="" />
+
             <div>
               <label for="public-input-name" class="block text-xs font-bold text-slate-200 mb-1">1. Nome de quem vai descer</label>
               <input
@@ -1153,14 +1156,23 @@
             </div>
 
             <div>
-              <label for="public-select-stop" class="block text-xs font-bold text-amber-300 mb-1">2. Ponto onde irá descer</label>
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <label for="public-select-stop" class="block text-xs font-bold text-amber-300">2. Ponto onde irá descer</label>
+                <button type="button" id="btn-public-rename-selected-stop" class="text-[11px] font-bold text-sky-300 hover:text-sky-200 flex items-center gap-1" title="Alterar o nome do ponto selecionado">
+                  <i data-lucide="pencil" class="w-3 h-3"></i>
+                  <span>Alterar nome deste ponto</span>
+                </button>
+              </div>
               <select id="public-select-stop" required class="input-field !py-2 text-xs font-semibold"></select>
             </div>
 
             <div class="flex items-center gap-2 pt-1">
-              <button type="submit" class="btn-emerald flex-1 !py-2.5 text-xs font-extrabold">
+              <button type="submit" id="btn-public-submit-dropoff" class="btn-emerald flex-1 !py-2.5 text-xs font-extrabold">
                 <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                <span>Adicionar à Lista de Descida</span>
+                <span id="label-public-submit-dropoff">Adicionar à Lista de Descida</span>
+              </button>
+              <button type="button" id="btn-public-cancel-edit" class="hidden btn-secondary !py-2.5 !px-3 text-xs font-bold text-slate-300">
+                Cancelar
               </button>
             </div>
           </form>

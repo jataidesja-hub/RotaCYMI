@@ -5203,7 +5203,7 @@
       summaryEl.textContent = `${entries.length} pessoa(s) na lista de descida desta rota`;
     }
 
-    // Resumo por parada (mostrando os nomes que descem em cada ponto)
+    // Resumo por parada (mostrando os nomes que descem em cada ponto + botão de editar nome do ponto)
     const stopsSummaryEl = document.getElementById('public-stops-summary-list');
     if (stopsSummaryEl) {
       stopsSummaryEl.innerHTML = stops
@@ -5217,25 +5217,32 @@
                 : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
             }">
               <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
                   <span class="w-6 h-6 rounded-full ${
                     hasPeople ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'
                   } font-mono text-xs font-extrabold flex items-center justify-center shrink-0">P${idx + 1}</span>
                   <span class="text-xs font-bold text-white truncate">${pt.nome}</span>
                 </div>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                  hasPeople ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
-                }">${peopleHere.length} desce(m)</span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button type="button" data-public-rename-stop="${pt.id}" class="px-2 py-0.5 rounded-md bg-slate-800/90 hover:bg-sky-500/20 border border-slate-700 hover:border-sky-400 text-[10px] font-bold text-sky-300 flex items-center gap-1" title="Alterar nome deste ponto de parada">
+                    <i data-lucide="pencil" class="w-2.5 h-2.5"></i>
+                    <span>Editar Ponto</span>
+                  </button>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    hasPeople ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
+                  }">${peopleHere.length} desce(m)</span>
+                </div>
               </div>
               ${
                 hasPeople
                   ? `<div class="mt-1.5 pl-8 flex flex-wrap gap-1">${peopleHere
                       .map(
                         (person) =>
-                          `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/90 border border-amber-500/30 text-[11px] font-semibold text-amber-200">
+                          `<button type="button" data-public-edit-chip="${person.id}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/90 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 text-[11px] font-semibold text-amber-200 transition" title="Toque para editar o nome ou ponto de ${person.nome}">
                             <i data-lucide="user" class="w-3 h-3 text-amber-400"></i>
                             <span>${person.nome}</span>
-                          </span>`
+                            <i data-lucide="pencil" class="w-2.5 h-2.5 text-sky-300 ml-0.5"></i>
+                          </button>`
                       )
                       .join('')}</div>`
                   : ''
@@ -5244,6 +5251,23 @@
           `;
         })
         .join('');
+
+      stopsSummaryEl.querySelectorAll('[data-public-rename-stop]').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const stId = btn.getAttribute('data-public-rename-stop');
+          promptRenamePublicStop(stId);
+        });
+      });
+
+      stopsSummaryEl.querySelectorAll('[data-public-edit-chip]').forEach((chip) => {
+        chip.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const entryId = chip.getAttribute('data-public-edit-chip');
+          const found = entries.find((e) => e.id === entryId);
+          if (found) startEditingPublicDropoffEntry(found);
+        });
+      });
 
       stopsSummaryEl.querySelectorAll('[data-public-focus-stop]').forEach((card) => {
         card.addEventListener('click', () => {
@@ -5262,7 +5286,7 @@
       });
     }
 
-    // Lista individual de pessoas com botão para remover ou trocar
+    // Lista individual de pessoas com botão para Editar nome/ponto ou Remover
     const peopleListEl = document.getElementById('public-dropoff-people-list');
     if (peopleListEl) {
       if (entries.length === 0) {
@@ -5285,13 +5309,26 @@
                     <div class="text-[11px] text-emerald-300 truncate">Desce em: <strong>${item.stopName}</strong></div>
                   </div>
                 </div>
-                <button type="button" data-public-remove-entry="${item.id}" data-public-remove-user="${item.userId || ''}" class="btn-secondary !py-1 !px-2 text-[11px] text-rose-300 border-rose-500/30 shrink-0" title="Remover da lista de descida">
-                  Remover
-                </button>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button type="button" data-public-edit-entry="${item.id}" class="btn-secondary !py-1 !px-2 text-[11px] text-sky-300 border-sky-500/40" title="Editar nome ou trocar ponto de descida">
+                    Editar
+                  </button>
+                  <button type="button" data-public-remove-entry="${item.id}" data-public-remove-user="${item.userId || ''}" class="btn-secondary !py-1 !px-2 text-[11px] text-rose-300 border-rose-500/30" title="Remover da lista de descida">
+                    Remover
+                  </button>
+                </div>
               </div>
             `;
           })
           .join('');
+
+        peopleListEl.querySelectorAll('[data-public-edit-entry]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const entryId = btn.getAttribute('data-public-edit-entry');
+            const found = entries.find((e) => e.id === entryId);
+            if (found) startEditingPublicDropoffEntry(found);
+          });
+        });
 
         peopleListEl.querySelectorAll('[data-public-remove-entry]').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -5362,12 +5399,106 @@
     }
   }
 
+  function startEditingPublicDropoffEntry(entry) {
+    const nameInput = document.getElementById('public-input-name');
+    const stopSelect = document.getElementById('public-select-stop');
+    const editIdInput = document.getElementById('public-editing-entry-id');
+    const editUserInput = document.getElementById('public-editing-user-id');
+    const submitLabel = document.getElementById('label-public-submit-dropoff');
+    const cancelBtn = document.getElementById('btn-public-cancel-edit');
+    const headingText = document.getElementById('public-form-heading-text');
+
+    if (editIdInput) editIdInput.value = entry.id || '';
+    if (editUserInput) editUserInput.value = entry.userId || '';
+    if (nameInput) {
+      nameInput.value = entry.nome || '';
+      nameInput.focus();
+      nameInput.select();
+    }
+    if (stopSelect && entry.stopId) {
+      stopSelect.value = entry.stopId;
+    }
+    if (submitLabel) {
+      submitLabel.textContent = 'Salvar Alteração';
+    }
+    if (headingText) {
+      headingText.textContent = `Editando: ${entry.nome}`;
+    }
+    cancelBtn?.classList.remove('hidden');
+  }
+
+  function cancelEditingPublicDropoffEntry() {
+    const nameInput = document.getElementById('public-input-name');
+    const editIdInput = document.getElementById('public-editing-entry-id');
+    const editUserInput = document.getElementById('public-editing-user-id');
+    const submitLabel = document.getElementById('label-public-submit-dropoff');
+    const cancelBtn = document.getElementById('btn-public-cancel-edit');
+    const headingText = document.getElementById('public-form-heading-text');
+
+    if (editIdInput) editIdInput.value = '';
+    if (editUserInput) editUserInput.value = '';
+    if (nameInput) nameInput.value = '';
+    if (submitLabel) submitLabel.textContent = 'Adicionar à Lista de Descida';
+    if (headingText) headingText.textContent = 'Adicionar Quem Irá Descer e Onde Irá Descer';
+    cancelBtn?.classList.add('hidden');
+  }
+
+  async function promptRenamePublicStop(stopIdParam = '') {
+    const rota =
+      (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
+      (state.db.rotas || [])[0];
+    if (!rota || !Array.isArray(rota.pontos)) return;
+
+    const selectStopEl = document.getElementById('public-select-stop');
+    const targetStopId = stopIdParam || (selectStopEl ? selectStopEl.value : '');
+    const stopObj = rota.pontos.find((p) => p.id === targetStopId);
+    if (!stopObj) {
+      showToast('Selecione um ponto de parada primeiro.', 'warning');
+      return;
+    }
+
+    const newName = window.prompt('Digite o novo nome para este ponto de parada:', stopObj.nome || '');
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      showToast('O nome do ponto não pode ficar vazio.', 'warning');
+      return;
+    }
+
+    stopObj.nome = trimmed;
+    rota.updatedAt = new Date().toISOString();
+
+    // Atualiza também o nome salvo nas anotações manuais que usam este ponto
+    const manualList = loadPublicManualDropoffs().map((item) => {
+      if (item.routeId === rota.id && item.stopId === stopObj.id) {
+        return { ...item, stopName: trimmed };
+      }
+      return item;
+    });
+    savePublicManualDropoffs(manualList);
+
+    saveLocalDb();
+    renderPublicDropoffView(false);
+    showToast(`Nome do ponto atualizado para: "${trimmed}"`, 'success');
+
+    await callGasApi({
+      action: 'upsertEntity',
+      sheet: 'Rotas',
+      record: rota
+    });
+  }
+
   async function handlePublicDropoffSubmit(e) {
     e.preventDefault();
     const nameInput = document.getElementById('public-input-name');
     const stopSelect = document.getElementById('public-select-stop');
+    const editIdInput = document.getElementById('public-editing-entry-id');
+    const editUserInput = document.getElementById('public-editing-user-id');
+
     const nome = (nameInput ? nameInput.value : '').trim();
     const stopId = stopSelect ? stopSelect.value : '';
+    const editingEntryId = editIdInput ? editIdInput.value : '';
+    const editingUserId = editUserInput ? editUserInput.value : '';
 
     const rota =
       (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId) ||
@@ -5381,12 +5512,15 @@
     const chosenStop = stops.find((s) => s.id === stopId) || stops[0];
     const isVolta = getRouteDirectionType(rota) === 'VOLTA';
 
-    // Se o nome corresponder a um passageiro cadastrado, atualiza também o ponto de descida dele no banco/planilha
-    const matchedPax = (state.db.usuarios || []).find(
-      (u) => u.perfil === 'PASSAGEIRO' && String(u.nome).trim().toLowerCase() === nome.toLowerCase()
-    );
+    // Se estiver editando um passageiro já cadastrado (ou o nome bater com um cadastrado), atualiza o cadastro dele também
+    let matchedPax = editingUserId
+      ? (state.db.usuarios || []).find((u) => u.id === editingUserId)
+      : (state.db.usuarios || []).find(
+          (u) => u.perfil === 'PASSAGEIRO' && String(u.nome).trim().toLowerCase() === nome.toLowerCase()
+        );
 
     if (matchedPax) {
+      matchedPax.nome = nome;
       matchedPax.statusEmbarque = 'VOU';
       if (isVolta) {
         matchedPax.rotaVoltaId = rota.id;
@@ -5406,24 +5540,54 @@
       });
     }
 
-    // Salva também na lista rápida desta tela (atualizando caso o mesmo nome já exista na rota)
-    const manualList = loadPublicManualDropoffs().filter(
-      (m) => !(m.routeId === rota.id && String(m.nome).trim().toLowerCase() === nome.toLowerCase())
-    );
-    manualList.push({
-      id: `drop_${Date.now()}`,
-      routeId: rota.id,
-      nome,
-      stopId: chosenStop.id,
-      stopName: chosenStop.nome,
-      userId: matchedPax ? matchedPax.id : '',
-      updatedAt: new Date().toISOString()
-    });
+    // Atualiza ou insere na lista manual desta tela
+    let manualList = loadPublicManualDropoffs();
+    if (editingEntryId && !editingEntryId.startsWith('pax_')) {
+      const idx = manualList.findIndex((m) => m.id === editingEntryId);
+      if (idx >= 0) {
+        manualList[idx] = {
+          ...manualList[idx],
+          nome,
+          stopId: chosenStop.id,
+          stopName: chosenStop.nome,
+          userId: matchedPax ? matchedPax.id : manualList[idx].userId || '',
+          updatedAt: new Date().toISOString()
+        };
+      } else {
+        manualList.push({
+          id: `drop_${Date.now()}`,
+          routeId: rota.id,
+          nome,
+          stopId: chosenStop.id,
+          stopName: chosenStop.nome,
+          userId: matchedPax ? matchedPax.id : '',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } else {
+      manualList = manualList.filter(
+        (m) => !(m.routeId === rota.id && String(m.nome).trim().toLowerCase() === nome.toLowerCase())
+      );
+      manualList.push({
+        id: `drop_${Date.now()}`,
+        routeId: rota.id,
+        nome,
+        stopId: chosenStop.id,
+        stopName: chosenStop.nome,
+        userId: matchedPax ? matchedPax.id : '',
+        updatedAt: new Date().toISOString()
+      });
+    }
     savePublicManualDropoffs(manualList);
 
-    if (nameInput) nameInput.value = '';
+    cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
-    showToast(`${nome} adicionado(a) para descer em: ${chosenStop.nome}`, 'success');
+    showToast(
+      editingEntryId
+        ? `Dados atualizados: ${nome} -> ${chosenStop.nome}`
+        : `${nome} adicionado(a) para descer em: ${chosenStop.nome}`,
+      'success'
+    );
   }
 
   function removePublicDropoffEntry(entryId, userId) {
@@ -5448,6 +5612,7 @@
       }
     }
 
+    cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
     showToast('Removido da lista de descida.', 'info');
   }
@@ -5460,6 +5625,7 @@
 
     const remaining = loadPublicManualDropoffs().filter((m) => m.routeId !== rota.id);
     savePublicManualDropoffs(remaining);
+    cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
     showToast('Anotações manuais desta rota foram limpas.', 'info');
   }
@@ -6398,6 +6564,8 @@
     document.getElementById('btn-public-fit-route')?.addEventListener('click', fitPublicMapToActiveRoute);
     document.getElementById('btn-public-fullscreen')?.addEventListener('click', togglePublicMapFullscreen);
     document.getElementById('form-public-dropoff')?.addEventListener('submit', handlePublicDropoffSubmit);
+    document.getElementById('btn-public-cancel-edit')?.addEventListener('click', cancelEditingPublicDropoffEntry);
+    document.getElementById('btn-public-rename-selected-stop')?.addEventListener('click', () => promptRenamePublicStop());
     document.getElementById('btn-public-clear-list')?.addEventListener('click', clearPublicManualDropoffsForActiveRoute);
     document.getElementById('btn-public-copy-link')?.addEventListener('click', async () => {
       const url = getPublicDropoffDirectUrl();
