@@ -828,13 +828,15 @@
 
   /**
    * Consulta a API pública do OSRM (Open Source Routing Machine) para traçar o trajeto nas ruas
+   * e retorna a distância real de cada trecho (legs) para calcular o tempo e horário real de cada ponto.
    */
   async function fetchOsrmStreetRoute(stopsArray) {
-    if (! Array.isArray(stopsArray) || stopsArray.length < 2) {
+    if (!Array.isArray(stopsArray) || stopsArray.length < 2) {
       return {
-        polyline: stopsArray.map((s) => [Number(s.lng), Number(s.lat)]),
+        polyline: (stopsArray || []).map((s) => [Number(s.lng), Number(s.lat)]),
         distanciaKm: 0,
-        duracaoMin: 0
+        duracaoMin: 0,
+        legMeters: []
       };
     }
 
@@ -843,16 +845,26 @@
       .join(';');
 
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+    const boardingStopsCount = stopsArray.filter((p) => p.tipo !== 'WAYPOINT').length;
 
     try {
       const response = await fetch(osrmUrl);
       const data = await response.json();
       if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
         const route = data.routes[0];
+        const legMeters = Array.isArray(route.legs)
+          ? route.legs.map((leg) => Number(leg.distance || 0))
+          : [];
+        const distKm = Number((route.distance / 1000).toFixed(2));
+        // Velocidade real de ônibus urbano com lombadas/semáforos (~30 km/h = 2 min/km) + ~40s por parada real
+        const osrmMin = route.duration / 60;
+        const urbanBusMin = Math.max(osrmMin, distKm * 1.85) + Math.max(0, boardingStopsCount - 1) * 0.65;
+
         return {
           polyline: route.geometry.coordinates,
-          distanciaKm: Number((route.distance / 1000).toFixed(2)),
-          duracaoMin: Math.max(1, Math.round(route.duration / 60))
+          distanciaKm: distKm,
+          duracaoMin: Math.max(1, Math.round(urbanBusMin)),
+          legMeters
         };
       }
     } catch (err) {
@@ -861,20 +873,90 @@
 
     // Fallback caso offline
     let totalMeters = 0;
+    const legMeters = [];
     for (let i = 1; i < stopsArray.length; i++) {
-      totalMeters += calculateHaversineMeters(
+      const seg = calculateHaversineMeters(
         Number(stopsArray[i - 1].lat),
         Number(stopsArray[i - 1].lng),
         Number(stopsArray[i].lat),
         Number(stopsArray[i].lng)
       );
+      legMeters.push(seg);
+      totalMeters += seg;
     }
+
+    const distKm = Number((totalMeters / 1000).toFixed(2));
+    const urbanBusMin = distKm * 2.0 + Math.max(0, boardingStopsCount - 1) * 0.65;
 
     return {
       polyline: stopsArray.map((s) => [Number(s.lng), Number(s.lat)]),
-      distanciaKm: Number((totalMeters / 1000).toFixed(2)),
-      duracaoMin: Math.max(1, Math.round(totalMeters / 500))
+      distanciaKm: distKm,
+      duracaoMin: Math.max(1, Math.round(urbanBusMin)),
+      legMeters
     };
+  }
+
+  /**
+   * Calcula automaticamente os horários (`pt.horario`) e o tempo acumulado desde a partida (`pt.offsetMin`)
+   * de cada ponto de parada de acordo com a distância real do trajeto da rota (e não de 10 em 10 min fixos).
+   */
+  function syncStopTimesFromRouteGeometry(pointsArray, legMeters = [], totalDurationMin = 0) {
+    if (!Array.isArray(pointsArray) || pointsArray.length === 0) return;
+
+    const boardingStops = pointsArray.filter((p) => p.tipo !== 'WAYPOINT');
+    if (boardingStops.length === 0) return;
+
+    // Descobre o horário base do Ponto 1 (ex: "06:10" ou "18:05") para somar os minutos reais da rota a partir dele
+    const firstStop = boardingStops[0];
+    const baseMatch = String(firstStop.horario || '06:00').match(/^(\d{1,2}):(\d{2})$/);
+    const baseTotalMinutes = baseMatch
+      ? Number(baseMatch[1]) * 60 + Number(baseMatch[2])
+      : 6 * 60;
+
+    // Calcula a distância acumulada real até cada ponto (incluindo desvios de rua intermediários)
+    const cumMeters = [0];
+    for (let i = 1; i < pointsArray.length; i++) {
+      const legDist =
+        Array.isArray(legMeters) && typeof legMeters[i - 1] === 'number' && legMeters[i - 1] > 0
+          ? legMeters[i - 1]
+          : calculateHaversineMeters(
+              Number(pointsArray[i - 1].lat),
+              Number(pointsArray[i - 1].lng),
+              Number(pointsArray[i].lat),
+              Number(pointsArray[i].lng)
+            );
+      cumMeters.push(cumMeters[i - 1] + legDist);
+    }
+
+    const totalMeters = cumMeters[cumMeters.length - 1] || 0;
+    const effectiveTotalMin =
+      totalDurationMin > 0
+        ? totalDurationMin
+        : Math.max(1, Math.round((totalMeters / 1000) * 1.9 + Math.max(0, boardingStops.length - 1) * 0.65));
+
+    let boardingIndex = 0;
+    pointsArray.forEach((pt, idx) => {
+      if (pt.tipo === 'WAYPOINT') {
+        pt.horario = '';
+        pt.offsetMin = 0;
+        return;
+      }
+
+      if (boardingIndex === 0) {
+        pt.offsetMin = 0;
+        if (!pt.horario) pt.horario = '06:00';
+      } else {
+        const ratio = totalMeters > 0 ? cumMeters[idx] / totalMeters : boardingIndex / Math.max(1, boardingStops.length - 1);
+        const offsetMin = Math.max(1, Math.round(ratio * effectiveTotalMin));
+        pt.offsetMin = offsetMin;
+
+        const absMin = (baseTotalMinutes + offsetMin) % (24 * 60);
+        const hh = String(Math.floor(absMin / 60)).padStart(2, '0');
+        const mm = String(absMin % 60).padStart(2, '0');
+        pt.horario = `${hh}:${mm}`;
+      }
+      boardingIndex += 1;
+    });
   }
 
   /**
@@ -1465,13 +1547,18 @@
     renderAdminPassengersList();
     populateAdminSelectDropdowns();
 
-    // Garante que a rota inicial tenha geometria real das ruas via OSRM
+    // Garante que a rota inicial tenha geometria real das ruas via OSRM e horários sincronizados com o trajeto da rota
     for (const r of state.db.rotas) {
-      if (Array.isArray(r.pontos) && r.pontos.length >= 2 && (!r.polyline || r.polyline.length <= r.pontos.length)) {
-        const osrm = await fetchOsrmStreetRoute(r.pontos);
-        r.polyline = osrm.polyline;
-        r.distanciaKm = osrm.distanciaKm;
-        r.duracaoMin = osrm.duracaoMin;
+      if (Array.isArray(r.pontos) && r.pontos.length >= 2) {
+        if (!r.polyline || r.polyline.length <= r.pontos.length) {
+          const osrm = await fetchOsrmStreetRoute(r.pontos);
+          r.polyline = osrm.polyline;
+          r.distanciaKm = osrm.distanciaKm;
+          r.duracaoMin = osrm.duracaoMin;
+          syncStopTimesFromRouteGeometry(r.pontos, osrm.legMeters || [], osrm.duracaoMin);
+        } else {
+          syncStopTimesFromRouteGeometry(r.pontos, [], r.duracaoMin || 0);
+        }
       }
     }
     saveLocalDb();
@@ -2020,13 +2107,17 @@
         return;
       }
 
-      // Modo 'add_stop': adiciona nova Parada de Embarque
-      const boardingCount = state.routeDraft.pontos.filter((p) => p.tipo !== 'WAYPOINT').length + 1;
-      const defaultHour = `${String(6 + Math.floor(boardingCount / 4)).padStart(2, '0')}:${String((boardingCount * 10) % 60).padStart(2, '0')}`;
+      // Modo 'add_stop': adiciona nova Parada de Embarque (horário calculado automaticamente pelo trajeto da rota)
+      const boardingStops = state.routeDraft.pontos.filter((p) => p.tipo !== 'WAYPOINT');
+      const boardingCount = boardingStops.length + 1;
+      const isVoltaDraft = (document.getElementById('route-direction')?.value || 'IDA') === 'VOLTA';
+      const firstStopHour = boardingStops[0]?.horario || (isVoltaDraft ? '18:05' : '06:00');
+
       state.routeDraft.pontos.push({
         id: `pto_${Date.now()}_${boardingCount}`,
         nome: `Ponto ${boardingCount} — Parada Embarque`,
-        horario: defaultHour,
+        horario: firstStopHour,
+        offsetMin: 0,
         tipo: 'PARADA',
         lat,
         lng
@@ -2034,7 +2125,7 @@
 
       await recalculateBuilderOsrm();
       renderRouteBuilderStopsAndPolyline();
-      showToast(`Parada #${boardingCount} adicionada à rota!`, 'success');
+      showToast(`Parada #${boardingCount} adicionada! Tempo calculado de acordo com o trajeto da rota.`, 'success');
     });
 
     state.maps.routeBuilder = map;
@@ -2046,10 +2137,18 @@
       state.routeDraft.polyline = osrmResult.polyline;
       state.routeDraft.distanciaKm = osrmResult.distanciaKm;
       state.routeDraft.duracaoMin = osrmResult.duracaoMin;
+      state.routeDraft.legMeters = osrmResult.legMeters || [];
+      syncStopTimesFromRouteGeometry(
+        state.routeDraft.pontos,
+        state.routeDraft.legMeters,
+        state.routeDraft.duracaoMin
+      );
     } else {
       state.routeDraft.polyline = state.routeDraft.pontos.map((p) => [Number(p.lng), Number(p.lat)]);
       state.routeDraft.distanciaKm = 0;
       state.routeDraft.duracaoMin = 0;
+      state.routeDraft.legMeters = [];
+      syncStopTimesFromRouteGeometry(state.routeDraft.pontos, [], 0);
     }
 
     const kmEl = document.getElementById('route-metric-km');
@@ -2070,6 +2169,13 @@
           </div>
         `;
       } else {
+        // Garante que os tempos por parada estejam sincronizados com a distância real da rota
+        syncStopTimesFromRouteGeometry(
+          state.routeDraft.pontos,
+          state.routeDraft.legMeters || [],
+          state.routeDraft.duracaoMin || 0
+        );
+
         stopsContainer.innerHTML = state.routeDraft.pontos
           .map((pt, idx) => {
             const isWaypoint = pt.tipo === 'WAYPOINT';
@@ -2091,11 +2197,18 @@
               `;
             }
 
+            const isFirstBoarding = stopCounter === 1;
+            const offsetLabel = isFirstBoarding ? 'Partida (0 min)' : `+${pt.offsetMin || 0} min da rota`;
+
             return `
               <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">${stopCounter}</span>
                 <input type="text" data-stop-name="${idx}" value="${pt.nome}" class="input-field !py-1 !px-2 !text-xs flex-1" placeholder="Nome do ponto" />
-                <input type="time" data-stop-time="${idx}" value="${pt.horario || '06:30'}" class="input-field !py-1 !px-2 !text-xs !w-24 font-mono" />
+                ${
+                  isFirstBoarding
+                    ? `<input type="time" data-stop-time="${idx}" value="${pt.horario || '06:00'}" class="input-field !py-1 !px-2 !text-xs !w-24 font-mono border-emerald-500/40 text-emerald-300" title="Horário de saída do Ponto 1 (os demais pontos são calculados automaticamente pelo trajeto da rota)" />`
+                    : `<span class="px-2.5 py-1 rounded-lg bg-slate-950/90 border border-sky-500/30 font-mono text-[11px] font-bold text-sky-300 shrink-0" title="Calculado automaticamente pela distância da rota (${pt.horario})">${offsetLabel} • ${pt.horario}</span>`
+                }
                 <button type="button" data-stop-up="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Subir">↑</button>
                 <button type="button" data-stop-down="${idx}" class="text-slate-400 hover:text-white px-1 text-xs" title="Descer">↓</button>
                 <button type="button" data-stop-remove="${idx}" class="text-rose-400 hover:text-rose-300 px-1.5" title="Remover Ponto">✕</button>
@@ -2118,6 +2231,11 @@
             const idx = Number(inp.getAttribute('data-stop-time'));
             if (state.routeDraft.pontos[idx]) {
               state.routeDraft.pontos[idx].horario = ev.target.value;
+              syncStopTimesFromRouteGeometry(
+                state.routeDraft.pontos,
+                state.routeDraft.legMeters || [],
+                state.routeDraft.duracaoMin || 0
+              );
               renderRouteBuilderStopsAndPolyline();
             }
           });
@@ -2194,11 +2312,13 @@
           <div class="cymi-waypoint-dot"></div>
         `;
       } else {
+        const badgeTimeLabel =
+          markerStopNum === 1 ? pt.horario || '06:00' : `+${pt.offsetMin || 0}m (${pt.horario || '--:--'})`;
         el.className = 'cymi-stop-marker';
         el.innerHTML = `
           <div class="cymi-stop-badge">
             <span>#${markerStopNum}</span>
-            <span class="text-emerald-400 font-mono">${pt.horario || '--:--'}</span>
+            <span class="text-emerald-400 font-mono">${badgeTimeLabel}</span>
           </div>
           <div class="cymi-stop-pin"></div>
         `;
@@ -2224,7 +2344,7 @@
     });
   }
 
-  function loadRouteIntoBuilder(routeId) {
+  async function loadRouteIntoBuilder(routeId) {
     const r = state.db.rotas.find((item) => item.id === routeId);
     if (!r) return;
 
@@ -2245,15 +2365,13 @@
       pontos: JSON.parse(JSON.stringify(r.pontos || [])),
       polyline: JSON.parse(JSON.stringify(r.polyline || [])),
       distanciaKm: r.distanciaKm || 0,
-      duracaoMin: r.duracaoMin || 0
+      duracaoMin: r.duracaoMin || 0,
+      legMeters: []
     };
 
-    // Ao carregar uma rota existente, entra em modo "navigate" para permitir editar sem criar paradas acidentais
+    // Ao carregar uma rota existente, entra em modo "navigate" e recalcula o tempo real de acordo com a rota OSRM
     setRouteBuilderClickMode('navigate');
-
-    document.getElementById('route-metric-km').textContent = `${state.routeDraft.distanciaKm} km`;
-    document.getElementById('route-metric-min').textContent = `${state.routeDraft.duracaoMin} min`;
-
+    await recalculateBuilderOsrm();
     renderRouteBuilderStopsAndPolyline();
 
     if (state.maps.routeBuilder && state.routeDraft.pontos.length > 0) {
