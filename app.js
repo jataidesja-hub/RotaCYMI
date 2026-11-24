@@ -339,6 +339,7 @@
     publicRuntime: {
       isOpen: false,
       activeRouteId: '',
+      lockedRouteId: '',
       is3dPitch: true,
       isFullscreen: false
     },
@@ -2530,10 +2531,11 @@
                 } • ${r.distanciaKm || 0} km • ${veh ? veh.prefixo : ''} (${drv ? drv.nome : ''})
               </div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
+            <div class="flex flex-wrap items-center gap-1.5 shrink-0">
               <button type="button" data-builder-toggle-open="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs ${
                 isLive ? 'text-rose-300 border-rose-500/40' : 'text-emerald-300 border-emerald-500/40'
               }">${isLive ? 'Fechar' : 'Abrir Rota'}</button>
+              <button type="button" data-share-dropoff-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-emerald-300 border-emerald-500/40" title="Copiar link direto desta rota (a pessoa verá somente esta rota sem login)">Link Descida</button>
               <button type="button" data-gmaps-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-sky-300 border-sky-500/40" title="Abrir rota e pontos no Google Maps">Google Maps</button>
               <button type="button" data-kml-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs text-amber-300 border-amber-500/40" title="Baixar KML (Google Earth / Meus Mapas)">KML</button>
               <button type="button" data-edit-route="${r.id}" class="btn-secondary !py-1 !px-2.5 text-xs">Editar</button>
@@ -2548,6 +2550,23 @@
       btn.addEventListener('click', () =>
         toggleRouteOpenState(btn.getAttribute('data-builder-toggle-open'))
       );
+    });
+
+    container.querySelectorAll('[data-share-dropoff-route]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const rId = btn.getAttribute('data-share-dropoff-route');
+        const rObj = (state.db.rotas || []).find((x) => x.id === rId);
+        const url = getPublicDropoffDirectUrl(rId);
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast(
+            `Link copiado! Quem abrir verá SOMENTE a rota "${rObj ? rObj.nome : rId}".`,
+            'success'
+          );
+        } catch (e) {
+          showToast(`Link da rota: ${url}`, 'info');
+        }
+      });
     });
 
     container.querySelectorAll('[data-gmaps-route]').forEach((btn) => {
@@ -4882,14 +4901,22 @@
     } catch (e) {}
   }
 
-  function getPublicDropoffDirectUrl() {
+  function getPublicDropoffDirectUrl(customRouteId = '') {
     const base = window.location.origin + window.location.pathname;
-    const rId = state.publicRuntime.activeRouteId;
+    const rId = customRouteId || state.publicRuntime.activeRouteId;
     return rId ? `${base}?painel=descida&rota=${encodeURIComponent(rId)}` : `${base}?painel=descida`;
   }
 
-  async function openPublicDropoffView(initialRouteId = '') {
+  async function openPublicDropoffView(initialRouteId = '', lockToThisRoute = false) {
     state.publicRuntime.isOpen = true;
+    if (lockToThisRoute && initialRouteId) {
+      state.publicRuntime.lockedRouteId = initialRouteId;
+    } else if (!initialRouteId && !lockToThisRoute) {
+      // Se o Admin abrir pelo painel interno, destrava para ele escolher qual rota quer gerar o link
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRota = urlParams.get('rota') || '';
+      state.publicRuntime.lockedRouteId = urlRota || '';
+    }
 
     document.getElementById('view-auth')?.classList.add('hidden');
     document.getElementById('view-admin')?.classList.add('hidden');
@@ -4898,10 +4925,10 @@
     document.getElementById('view-public-dropoff')?.classList.remove('hidden');
 
     const routes = state.db.rotas || [];
+    const targetId = state.publicRuntime.lockedRouteId || initialRouteId || state.publicRuntime.activeRouteId;
     const voltaRoute = routes.find((r) => getRouteDirectionType(r) === 'VOLTA');
     const chosen =
-      routes.find((r) => r.id === initialRouteId) ||
-      routes.find((r) => r.id === state.publicRuntime.activeRouteId) ||
+      routes.find((r) => r.id === targetId) ||
       voltaRoute ||
       routes[0];
 
@@ -5114,7 +5141,9 @@
 
   function renderPublicDropoffView(fitBoundsNow = false) {
     const routes = state.db.rotas || [];
+    const lockedId = state.publicRuntime.lockedRouteId;
     const rota =
+      (lockedId && routes.find((r) => r.id === lockedId)) ||
       routes.find((r) => r.id === state.publicRuntime.activeRouteId) ||
       routes[0];
     if (!rota) return;
@@ -5134,9 +5163,20 @@
       badgeEl.textContent = isLive ? 'ROTA ABERTA AO VIVO' : `ROTA DE ${sentido}`;
     }
 
-    // 1. Botões de escolha de rota (IDA / VOLTA)
+    // Se o link contém ?rota=... (lockedId), oculta a lista de todas as rotas para que a pessoa veja SOMENTE a rota do link enviado
+    const isLockedByLink = Boolean(lockedId);
+    const pickerBox = document.getElementById('public-route-picker-box');
+    const backLoginBtn = document.getElementById('btn-public-back-login');
+    if (pickerBox) {
+      pickerBox.classList.toggle('hidden', isLockedByLink);
+    }
+    if (backLoginBtn) {
+      backLoginBtn.classList.toggle('hidden', isLockedByLink && !state.currentUser);
+    }
+
+    // 1. Botões de escolha de rota (visíveis apenas quando você entra no painel para escolher qual rota quer copiar o link)
     const btnsEl = document.getElementById('public-route-buttons');
-    if (btnsEl) {
+    if (btnsEl && !isLockedByLink) {
       btnsEl.innerHTML = routes
         .map((r) => {
           const rVolta = getRouteDirectionType(r) === 'VOLTA';
@@ -6568,10 +6608,14 @@
     document.getElementById('btn-public-rename-selected-stop')?.addEventListener('click', () => promptRenamePublicStop());
     document.getElementById('btn-public-clear-list')?.addEventListener('click', clearPublicManualDropoffsForActiveRoute);
     document.getElementById('btn-public-copy-link')?.addEventListener('click', async () => {
+      const rObj = (state.db.rotas || []).find((r) => r.id === state.publicRuntime.activeRouteId);
       const url = getPublicDropoffDirectUrl();
       try {
         await navigator.clipboard.writeText(url);
-        showToast('Link direto copiado! Qualquer pessoa pode abrir sem login.', 'success');
+        showToast(
+          `Link copiado! Quem abrir verá SOMENTE a rota "${rObj ? rObj.nome : 'selecionada'}".`,
+          'success'
+        );
       } catch (e) {
         showToast(`Link direto: ${url}`, 'info');
       }
@@ -6625,8 +6669,9 @@
     setupApiConfigModal();
     bindEvents();
 
-    // Verifica se abriu direto pelo link público sem login (?painel=descida ou ?descida=1)
+    // Verifica se abriu direto pelo link público sem login (?painel=descida ou ?descida=1 ou ?rota=...)
     const startParams = new URLSearchParams(window.location.search);
+    const paramRota = startParams.get('rota') || '';
     const openedViaPublicDropoffLink =
       startParams.get('painel') === 'descida' ||
       startParams.get('descida') === '1' ||
@@ -6636,7 +6681,7 @@
     const openedViaInviteLink = !openedViaPublicDropoffLink && checkInviteLinkOnStartup();
 
     if (openedViaPublicDropoffLink) {
-      openPublicDropoffView(startParams.get('rota') || '');
+      openPublicDropoffView(paramRota, Boolean(paramRota));
     } else if (!openedViaInviteLink) {
       // Se não for link de cadastro nem painel público e já houver sessão salva ("Lembrar-me"), entra direto no painel
       checkExistingSession();

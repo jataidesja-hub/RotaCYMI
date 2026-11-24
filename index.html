@@ -1075,9 +1075,9 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5">
-          <button type="button" id="btn-public-copy-link" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Copiar link direto desta tela sem login">
+          <button type="button" id="btn-public-copy-link" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Copiar link direto desta rota para enviar (a pessoa verá somente esta rota)">
             <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i>
-            <span>Copiar Link Direto</span>
+            <span id="label-public-copy-link">Copiar Link Desta Rota</span>
           </button>
           <button type="button" id="btn-public-back-login" class="btn-secondary !py-1.5 !px-3 text-xs border-slate-700 text-slate-300">
             <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
@@ -1086,9 +1086,9 @@
         </div>
       </div>
 
-      <!-- Botões Visuais para Escolher Qualquer Rota (IDA ou VOLTA) -->
-      <div>
-        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Toque na rota que deseja visualizar no mapa 3D / Satélite:</div>
+      <!-- Botões Visuais para Escolher Qualquer Rota (ocultado automaticamente quando a pessoa abre o link direto de uma rota) -->
+      <div id="public-route-picker-box">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Selecione a rota para visualizar ou clique em "Copiar Link Desta Rota" para enviar somente ela:</div>
         <div id="public-route-buttons" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
       </div>
     </div>
