@@ -1086,6 +1086,18 @@
             <span>Encerrar Navegação GPS</span>
           </button>
 
+          <!-- Botão para Ativar Notificações de Horário do Ônibus (Seg-Qui 17:45 / 18:00 e Sex 16:45 / 17:00) -->
+          <button type="button" id="btn-public-enable-notifications" class="btn-secondary !py-1.5 !px-3 text-xs border-amber-500/40 text-amber-300" title="Receber avisos de horário de saída (Seg-Qui 17:45/18:00 e Sex 16:45/17:00)">
+            <i data-lucide="bell-ring" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span id="label-public-notifications">Ativar Avisos (17:45 / 18h)</span>
+          </button>
+
+          <!-- Botão para Instalar o Aplicativo Direto Nesta Rota -->
+          <button type="button" id="btn-public-install-app" class="btn-secondary !py-1.5 !px-3 text-xs border-sky-500/40 text-sky-300" title="Instalar aplicativo no celular abrindo direto nesta rota">
+            <i data-lucide="smartphone-charging" class="w-3.5 h-3.5 text-sky-400"></i>
+            <span id="label-public-install-app">Instalar App Desta Rota</span>
+          </button>
+
           <!-- Botões administrativos (ocultados para quem abre o link compartilhado) -->
           <button type="button" id="btn-public-copy-link" class="btn-secondary !py-1.5 !px-3 text-xs border-emerald-500/40 text-emerald-300" title="Copiar link direto desta rota com todos os nomes cadastrados nos pontos">
             <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i>
@@ -1096,6 +1108,19 @@
             <span>Voltar</span>
           </button>
         </div>
+      </div>
+
+      <!-- Faixa Informativa dos Lembretes Automáticos de Horário de Saída -->
+      <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold uppercase tracking-wider text-[10px]">Horários &amp; Avisos</span>
+          <span><strong>Seg a Qui:</strong> 17:45 (Avisar no WhatsApp se não for) • 18:00 (Saída pontualmente às 18:05)</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-emerald-300"><strong>Sexta-feira (1h antes):</strong> 16:45 (Avisar no WhatsApp) • 17:00 (Saída pontualmente às 17:05)</span>
+        </div>
+        <button type="button" id="btn-public-test-notification" class="text-[11px] font-bold text-sky-400 hover:text-sky-300 underline shrink-0">
+          Testar Notificação Agora
+        </button>
       </div>
 
       <!-- Botões Visuais para Escolher Qualquer Rota (ocultado automaticamente quando a pessoa abre o link direto de uma rota) -->

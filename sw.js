@@ -2,8 +2,8 @@
  * ROTA CYMI - SERVICE WORKER (PWA OFFLINE COMPLETO: APP SHELL + MAPA + ROTAS)
  * ============================================================================ */
 
-const CACHE_NAME = 'rotacymi-pwa-v1.22.0';
-const RUNTIME_CACHE = 'rotacymi-runtime-v1.22.0';
+const CACHE_NAME = 'rotacymi-pwa-v1.23.0';
+const RUNTIME_CACHE = 'rotacymi-runtime-v1.23.0';
 
 const STATIC_ASSETS = [
   './',
@@ -38,6 +38,23 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || './index.html';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
   );
 });
 

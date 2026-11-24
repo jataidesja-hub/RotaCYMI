@@ -5112,21 +5112,24 @@
     return `${base}?painel=descida&rota=${encodeURIComponent(rId)}${snap ? `&dados=${encodeURIComponent(snap)}` : ''}`;
   }
 
-  async function openPublicDropoffView(initialRouteId = '', lockToThisRoute = false) {
+  async function openPublicDropoffView(initialRouteId = '', lockToThisRoute = false, fallbackDados = '') {
     state.publicRuntime.isOpen = true;
     const urlParams = new URLSearchParams(window.location.search);
     const urlRota = urlParams.get('rota') || '';
-    const urlDados = urlParams.get('dados') || '';
+    const urlDados = urlParams.get('dados') || fallbackDados || '';
 
     if (lockToThisRoute && initialRouteId) {
       state.publicRuntime.lockedRouteId = initialRouteId;
       state.publicRuntime.isReadOnlySharedLink = true;
+      // Salva o link instalado no celular para que, ao fechar e abrir o app pelo ícone, abra sempre direto nesta rota!
+      saveInstalledSharedRouteContext(initialRouteId, urlDados);
     } else if (!initialRouteId && !lockToThisRoute) {
       // Se o Admin abriu pelo botão interno do sistema, entra em modo Editor (pode escolher rota e cadastrar nomes)
       // Se a pessoa abriu direto pelo link compartilhado (?rota=...), fica travado em Somente Leitura + Iniciar Rota GPS
       if (urlRota && !state.currentUser) {
         state.publicRuntime.lockedRouteId = urlRota;
         state.publicRuntime.isReadOnlySharedLink = true;
+        saveInstalledSharedRouteContext(urlRota, urlDados);
       } else {
         state.publicRuntime.lockedRouteId = '';
         state.publicRuntime.isReadOnlySharedLink = false;
@@ -5181,6 +5184,7 @@
 
   function closePublicDropoffView() {
     stopPublicRouteGpsNavigation(false);
+    clearInstalledSharedRouteContext();
     state.publicRuntime.isOpen = false;
     const globalHeader = document.querySelector('body > header');
     if (globalHeader) globalHeader.classList.remove('hidden');
@@ -6272,8 +6276,224 @@
   }
 
   /* ==========================================================================
-   * 11. COMPONENTE DE INSTALAÇÃO INTELIGENTE PWA (ANDROID + iOS + SERVICE WORKER)
+   * 11. COMPONENTE DE INSTALAÇÃO INTELIGENTE PWA + PERSISTÊNCIA DO LINK INSTALADO + NOTIFICAÇÕES DE HORÁRIO
    * ========================================================================== */
+  const INSTALLED_SHARED_LINK_KEY = 'rotacymi_installed_shared_link_v1';
+  const NOTIF_ENABLED_KEY = 'rotacymi_schedule_notif_enabled_v1';
+  const NOTIF_FIRED_LOG_KEY = 'rotacymi_schedule_notif_fired_v1';
+
+  /**
+   * Salva o link compartilhado da rota no dispositivo para que, ao instalar o aplicativo
+   * e fechar/abrir novamente pelo ícone da tela inicial, ele abra DIRETO na rota do link
+   * (e nunca vá para a tela de login).
+   */
+  function saveInstalledSharedRouteContext(routeId, dadosSnap = '') {
+    if (!routeId) return;
+    try {
+      const existingRaw = localStorage.getItem(INSTALLED_SHARED_LINK_KEY);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      const payload = {
+        rota: routeId,
+        dados: dadosSnap || existing.dados || '',
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem(INSTALLED_SHARED_LINK_KEY, JSON.stringify(payload));
+    } catch (e) {}
+  }
+
+  function loadInstalledSharedRouteContext() {
+    try {
+      const raw = localStorage.getItem(INSTALLED_SHARED_LINK_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && parsed.rota ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearInstalledSharedRouteContext() {
+    try {
+      localStorage.removeItem(INSTALLED_SHARED_LINK_KEY);
+    } catch (e) {}
+  }
+
+  /**
+   * Sistema de Notificações Programadas de Segunda a Sexta:
+   * - Segunda a Quinta:
+   *   • 17:45 -> "Caso não for no ônibus comunicar no grupo do WhatsApp"
+   *   • 18:00 -> "Partida sairá pontualmente às 18:05"
+   * - Sexta-feira (1 hora antes):
+   *   • 16:45 -> "Caso não for no ônibus comunicar no grupo do WhatsApp (Sexta-feira: saída 1h antes)"
+   *   • 17:00 -> "Partida sairá pontualmente às 17:05"
+   */
+  function updateNotificationButtonUi() {
+    const btn = document.getElementById('btn-public-enable-notifications');
+    const lbl = document.getElementById('label-public-notifications');
+    if (!btn || !lbl) return;
+
+    const hasSupport = 'Notification' in window;
+    const isGranted = hasSupport && Notification.permission === 'granted';
+    const isEnabled = isGranted && localStorage.getItem(NOTIF_ENABLED_KEY) !== '0';
+
+    if (isEnabled) {
+      lbl.textContent = 'Avisos Ativos (Seg-Sex)';
+      btn.classList.add('border-emerald-500/50', 'text-emerald-300', 'bg-emerald-500/15');
+      btn.classList.remove('border-amber-500/40', 'text-amber-300');
+    } else {
+      lbl.textContent = 'Ativar Avisos (17:45 / 18h)';
+      btn.classList.remove('border-emerald-500/50', 'text-emerald-300', 'bg-emerald-500/15');
+      btn.classList.add('border-amber-500/40', 'text-amber-300');
+    }
+  }
+
+  async function fireRotaNotification(title, body, tag = 'rotacymi-alert') {
+    // Sempre mostra alerta visual e sonoro na tela caso o app esteja aberto
+    showToast(`🔔 ${title}: ${body}`, 'warning');
+
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      return;
+    }
+
+    const targetUrl = window.location.href;
+    const options = {
+      body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag,
+      renotify: true,
+      vibrate: [250, 120, 250],
+      data: { url: targetUrl }
+    };
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, options);
+          return;
+        }
+      }
+      new Notification(title, options);
+    } catch (e) {
+      try {
+        new Notification(title, options);
+      } catch (err) {}
+    }
+  }
+
+  async function requestAndEnableScheduleNotifications() {
+    if (!('Notification' in window)) {
+      localStorage.setItem(NOTIF_ENABLED_KEY, '1');
+      updateNotificationButtonUi();
+      showToast(
+        'Avisos ativados na tela! (No iPhone/iOS, instale o app na Tela de Início para receber notificações do sistema).',
+        'info'
+      );
+      return;
+    }
+
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        localStorage.setItem(NOTIF_ENABLED_KEY, '1');
+        updateNotificationButtonUi();
+        await fireRotaNotification(
+          'Avisos RotaCYMI Ativados!',
+          'Seg a Qui: 17:45 e 18:00 | Sexta-feira (1h antes): 16:45 e 17:00.',
+          'rotacymi-welcome'
+        );
+      } else {
+        showToast('Permissão de notificação bloqueada no navegador. Libere nas configurações do site.', 'warning');
+      }
+    } catch (e) {
+      showToast('Não foi possível solicitar permissão de notificação neste navegador.', 'warning');
+    }
+  }
+
+  function triggerTestScheduleNotification() {
+    const now = new Date();
+    const isFriday = now.getDay() === 5;
+    const msg1 = 'Caso não for no ônibus comunicar no grupo do WhatsApp.';
+    const msg2 = isFriday
+      ? 'Partida sairá pontualmente às 17:05 (Horário de Sexta-feira).'
+      : 'Partida sairá pontualmente às 18:05.';
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      requestAndEnableScheduleNotifications();
+      return;
+    }
+
+    fireRotaNotification(
+      isFriday ? '🚌 Lembrete RotaCYMI (Sexta - 1h antes)' : '🚌 Lembrete RotaCYMI (Seg a Qui)',
+      `${msg1} | ${msg2}`,
+      `rotacymi-test-${Date.now()}`
+    );
+  }
+
+  function checkScheduledBusNotificationsTick() {
+    const now = new Date();
+    const day = now.getDay(); // 0 = Dom, 1 = Seg, 2 = Ter, 3 = Qua, 4 = Qui, 5 = Sex, 6 = Sab
+    if (day < 1 || day > 5) return; // Apenas Segunda (1) a Sexta (5)
+
+    const isFriday = day === 5;
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Horários de Segunda a Quinta: 17:45 e 18:00
+    // Horários de Sexta-feira (1 hora antes): 16:45 e 17:00
+    const warnHour = isFriday ? 16 : 17;
+    const departHour = isFriday ? 17 : 18;
+    const departExactText = isFriday ? '17:05' : '18:05';
+
+    const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    let firedMap = {};
+    try {
+      firedMap = JSON.parse(localStorage.getItem(NOTIF_FIRED_LOG_KEY) || '{}') || {};
+    } catch (e) {
+      firedMap = {};
+    }
+
+    // Janela de 17:45 (Seg-Qui) ou 16:45 (Sex) — tolerância de 2 minutos caso o celular desperte às 17:45/17:46
+    if (hours === warnHour && (minutes === 45 || minutes === 46)) {
+      const slotKey = `${dateKey}_warn_45`;
+      if (!firedMap[slotKey]) {
+        firedMap[slotKey] = true;
+        localStorage.setItem(NOTIF_FIRED_LOG_KEY, JSON.stringify(firedMap));
+        fireRotaNotification(
+          `🚌 Aviso da Rota (${String(warnHour).padStart(2, '0')}:45)`,
+          'Caso não for no ônibus comunicar no grupo do WhatsApp.',
+          slotKey
+        );
+      }
+    }
+
+    // Janela de 18:00 (Seg-Qui) ou 17:00 (Sex) — tolerância de 2 minutos
+    if (hours === departHour && (minutes === 0 || minutes === 1)) {
+      const slotKey = `${dateKey}_depart_00`;
+      if (!firedMap[slotKey]) {
+        firedMap[slotKey] = true;
+        localStorage.setItem(NOTIF_FIRED_LOG_KEY, JSON.stringify(firedMap));
+        fireRotaNotification(
+          `🚌 Atenção para a Saída (${String(departHour).padStart(2, '0')}:00)`,
+          `Partida sairá pontualmente às ${departExactText}!`,
+          slotKey
+        );
+      }
+    }
+  }
+
+  function startScheduleNotificationsWatcher() {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      if (localStorage.getItem(NOTIF_ENABLED_KEY) === null) {
+        localStorage.setItem(NOTIF_ENABLED_KEY, '1');
+      }
+    }
+    updateNotificationButtonUi();
+    checkScheduledBusNotificationsTick();
+    setInterval(checkScheduledBusNotificationsTick, 20000);
+  }
+
   function setupSmartPwaInstaller() {
     // Registra Service Worker
     if ('serviceWorker' in navigator) {
@@ -6285,6 +6505,7 @@
     }
 
     const btnInstall = document.getElementById('btn-pwa-install');
+    const btnPublicInstall = document.getElementById('btn-public-install-app');
     const btnNativeTrigger = document.getElementById('btn-trigger-native-install');
     const modalIos = document.getElementById('modal-ios-install');
 
@@ -6293,8 +6514,12 @@
       window.matchMedia('(display-mode: standalone)').matches ||
       window.navigator.standalone === true;
 
-    if (isInStandaloneMode && btnInstall) {
-      document.getElementById('label-pwa-install').textContent = 'App Instalado';
+    if (isInStandaloneMode) {
+      if (btnInstall) document.getElementById('label-pwa-install').textContent = 'App Instalado';
+      if (btnPublicInstall) {
+        const lbl = document.getElementById('label-public-install-app');
+        if (lbl) lbl.textContent = 'App Instalado';
+      }
     }
 
     // Captura evento nativo do Android / Chrome Desktop
@@ -6305,33 +6530,54 @@
       if (btnInstall) {
         document.getElementById('label-pwa-install').textContent = 'Instalar Aplicativo';
       }
+      if (btnPublicInstall) {
+        const lbl = document.getElementById('label-public-install-app');
+        if (lbl) lbl.textContent = 'Instalar App Desta Rota';
+      }
     });
 
-    if (btnInstall) {
-      btnInstall.addEventListener('click', async () => {
-        if (state.deferredInstallPrompt) {
-          state.deferredInstallPrompt.prompt();
-          const { outcome } = await state.deferredInstallPrompt.userChoice;
-          if (outcome === 'accepted') {
-            showToast('Aplicativo RotaCYMI instalado com sucesso!', 'success');
-          }
-          state.deferredInstallPrompt = null;
-          return;
-        }
+    const handleTriggerInstall = async () => {
+      // Se estiver na tela da rota compartilhada, grava a rota atual para sempre abrir nela ao clicar no ícone instalado!
+      if (state.publicRuntime.isOpen && state.publicRuntime.activeRouteId) {
+        const r = (state.db.rotas || []).find((x) => x.id === state.publicRuntime.activeRouteId);
+        const snap = r ? encodeRoutePeopleSnapshotForUrl(r) : '';
+        saveInstalledSharedRouteContext(state.publicRuntime.activeRouteId, snap);
+      }
 
-        // No iOS ou quando o prompt nativo já foi usado, exibe o modal instrutivo elegante
-        if (modalIos) {
-          modalIos.classList.remove('hidden');
-          modalIos.classList.add('flex');
-          if (isIos) {
-            showToast('Siga os 3 passos para adicionar o RotaCYMI à Tela de Início do seu iPhone/iPad.', 'info');
-          }
+      if (state.deferredInstallPrompt) {
+        state.deferredInstallPrompt.prompt();
+        const { outcome } = await state.deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+          showToast('Aplicativo instalado! Ao abrir pelo ícone, ele entrará direto nesta rota.', 'success');
         }
-      });
+        state.deferredInstallPrompt = null;
+        return;
+      }
+
+      // No iOS ou quando o prompt nativo já foi usado, exibe o modal instrutivo elegante
+      if (modalIos) {
+        modalIos.classList.remove('hidden');
+        modalIos.classList.add('flex');
+        if (isIos) {
+          showToast('Siga os 3 passos para adicionar o RotaCYMI à Tela de Início do seu iPhone/iPad.', 'info');
+        }
+      }
+    };
+
+    if (btnInstall) {
+      btnInstall.addEventListener('click', handleTriggerInstall);
+    }
+    if (btnPublicInstall) {
+      btnPublicInstall.addEventListener('click', handleTriggerInstall);
     }
 
     if (btnNativeTrigger) {
       btnNativeTrigger.addEventListener('click', async () => {
+        if (state.publicRuntime.isOpen && state.publicRuntime.activeRouteId) {
+          const r = (state.db.rotas || []).find((x) => x.id === state.publicRuntime.activeRouteId);
+          const snap = r ? encodeRoutePeopleSnapshotForUrl(r) : '';
+          saveInstalledSharedRouteContext(state.publicRuntime.activeRouteId, snap);
+        }
         if (state.deferredInstallPrompt) {
           state.deferredInstallPrompt.prompt();
           await state.deferredInstallPrompt.userChoice;
@@ -7210,6 +7456,8 @@
       updatePublicBusMarkerAndCamera(true);
       showToast('Mapa 3D centralizado na sua localização GPS.', 'success');
     });
+    document.getElementById('btn-public-enable-notifications')?.addEventListener('click', requestAndEnableScheduleNotifications);
+    document.getElementById('btn-public-test-notification')?.addEventListener('click', triggerTestScheduleNotification);
     document.getElementById('form-public-dropoff')?.addEventListener('submit', handlePublicDropoffSubmit);
     document.getElementById('btn-public-cancel-edit')?.addEventListener('click', cancelEditingPublicDropoffEntry);
     document.getElementById('btn-public-rename-selected-stop')?.addEventListener('click', () => promptRenamePublicStop());
@@ -7275,22 +7523,36 @@
     setupSmartPwaInstaller();
     setupApiConfigModal();
     bindEvents();
+    startScheduleNotificationsWatcher();
 
     // Verifica se abriu direto pelo link público sem login (?painel=descida ou ?descida=1 ou ?rota=...)
+    // OU se a pessoa instalou o app através do link e reabriu pelo ícone da tela inicial!
     const startParams = new URLSearchParams(window.location.search);
-    const paramRota = startParams.get('rota') || '';
-    const paramDados = startParams.get('dados') || '';
-    const openedViaPublicDropoffLink =
+    const savedInstalledLink = loadInstalledSharedRouteContext();
+    const hasActiveUserSession = Boolean(localStorage.getItem(STORAGE_KEYS.SESSION));
+
+    let paramRota = startParams.get('rota') || '';
+    let paramDados = startParams.get('dados') || '';
+
+    let openedViaPublicDropoffLink =
       startParams.get('painel') === 'descida' ||
       startParams.get('descida') === '1' ||
       startParams.get('publico') === '1' ||
       Boolean(paramRota);
 
+    // Se o aplicativo foi fechado e aberto novamente pelo ícone instalado (onde a URL vem limpa sem ?rota=...),
+    // restaura automaticamente a rota do link instalado!
+    if (!openedViaPublicDropoffLink && !hasActiveUserSession && savedInstalledLink && savedInstalledLink.rota) {
+      paramRota = savedInstalledLink.rota;
+      paramDados = savedInstalledLink.dados || '';
+      openedViaPublicDropoffLink = true;
+    }
+
     // Verifica se o funcionário abriu o Link de Convite de Autocadastro (?cadastro=1)
     const openedViaInviteLink = !openedViaPublicDropoffLink && checkInviteLinkOnStartup();
 
     if (openedViaPublicDropoffLink) {
-      openPublicDropoffView(paramRota, true);
+      openPublicDropoffView(paramRota, true, paramDados);
     } else if (!openedViaInviteLink) {
       // Se não for link de cadastro nem painel público e já houver sessão salva ("Lembrar-me"), entra direto no painel
       checkExistingSession();
