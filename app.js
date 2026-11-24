@@ -4918,21 +4918,90 @@
   }
 
   /**
+   * Remove qualquer repetição de nome dentro de `rota.pontos[i].pessoas` e na lista manual local,
+   * garantindo que cada pessoa apareça SOMENTE 1 VEZ e tenha um ID único próprio.
+   */
+  function sanitizeAndDeduplicateRoutePeople(rota) {
+    if (!rota || !Array.isArray(rota.pontos)) return;
+    const seenInRoute = new Set();
+
+    rota.pontos.forEach((pt, ptIdx) => {
+      if (pt.tipo === 'WAYPOINT') {
+        pt.pessoas = [];
+        return;
+      }
+      if (!Array.isArray(pt.pessoas)) return;
+
+      const cleanList = [];
+      pt.pessoas.forEach((p, idx) => {
+        const rawName = typeof p === 'string' ? p : p && p.nome ? p.nome : '';
+        const cleanName = String(rawName || '').trim();
+        if (!cleanName) return;
+
+        const key = cleanName.toLowerCase();
+        if (seenInRoute.has(key)) return;
+        seenInRoute.add(key);
+
+        cleanList.push({
+          id: `ptpax_${rota.id}_${pt.id}_${ptIdx}_${idx}_${key.replace(/[^a-z0-9]/g, '')}`,
+          nome: cleanName,
+          userId: (p && typeof p === 'object' && p.userId) || ''
+        });
+      });
+
+      pt.pessoas = cleanList;
+    });
+
+    // Também remove duplicatas da lista manual no localStorage para esta rota
+    const allManual = loadPublicManualDropoffs();
+    const otherRoutesManual = allManual.filter((m) => m.routeId !== rota.id);
+    const thisRouteManual = [];
+    const seenManual = new Set();
+
+    allManual
+      .filter((m) => m.routeId === rota.id)
+      .forEach((m, idx) => {
+        const cleanName = String(m.nome || '').trim();
+        if (!cleanName) return;
+        const key = cleanName.toLowerCase();
+        if (seenManual.has(key)) return;
+        seenManual.add(key);
+        thisRouteManual.push({
+          ...m,
+          id: m.id && !String(m.id).startsWith('snap_') ? m.id : `drop_${rota.id}_${idx}_${key.replace(/[^a-z0-9]/g, '')}`,
+          nome: cleanName
+        });
+      });
+
+    savePublicManualDropoffs([...otherRoutesManual, ...thisRouteManual]);
+  }
+
+  /**
    * Sincroniza os nomes cadastrados nos pontos diretamente dentro de `rota.pontos[i].pessoas`
    * e salva na planilha (Google Sheets) para que QUALQUER celular que abrir o link veja os nomes!
    */
   async function syncRouteStopsPeopleToCloud(rota) {
     if (!rota || !Array.isArray(rota.pontos)) return;
     const entries = getDropoffEntriesForRoute(rota);
-    rota.pontos.forEach((pt) => {
+    rota.pontos.forEach((pt, ptIdx) => {
       if (pt.tipo === 'WAYPOINT') return;
-      pt.pessoas = entries
+      const seenStop = new Set();
+      const peopleForStop = [];
+      entries
         .filter((e) => e.stopId === pt.id)
-        .map((e) => ({
-          id: e.id,
-          nome: e.nome,
-          userId: e.userId || ''
-        }));
+        .forEach((e, idx) => {
+          const cleanName = String(e.nome || '').trim();
+          if (!cleanName) return;
+          const key = cleanName.toLowerCase();
+          if (seenStop.has(key)) return;
+          seenStop.add(key);
+          peopleForStop.push({
+            id: `ptpax_${rota.id}_${pt.id}_${ptIdx}_${idx}_${key.replace(/[^a-z0-9]/g, '')}`,
+            nome: cleanName,
+            userId: e.userId || ''
+          });
+        });
+      pt.pessoas = peopleForStop;
     });
     rota.updatedAt = new Date().toISOString();
     saveLocalDb();
@@ -4953,12 +5022,21 @@
     try {
       const stops = getBoardingStopsOnly(rota);
       const entries = getDropoffEntriesForRoute(rota);
-      // Formato compacto: [[indicePonto, "Nome Ponto", ["Pessoa 1", "Pessoa 2"]], ...]
-      const compact = stops.map((st, idx) => [
-        idx,
-        st.nome || `Parada ${idx + 1}`,
-        entries.filter((e) => e.stopId === st.id).map((e) => e.nome)
-      ]);
+      // Formato compacto sem duplicatas: [[indicePonto, "Nome Ponto", ["Pessoa 1", "Pessoa 2"]], ...]
+      const compact = stops.map((st, idx) => {
+        const uniqueNames = [];
+        const seen = new Set();
+        entries
+          .filter((e) => e.stopId === st.id)
+          .forEach((e) => {
+            const n = String(e.nome || '').trim();
+            if (n && !seen.has(n.toLowerCase())) {
+              seen.add(n.toLowerCase());
+              uniqueNames.push(n);
+            }
+          });
+        return [idx, st.nome || `Parada ${idx + 1}`, uniqueNames];
+      });
       const jsonStr = JSON.stringify(compact);
       return btoa(unescape(encodeURIComponent(jsonStr)));
     } catch (e) {
@@ -4975,6 +5053,7 @@
 
       const stops = getBoardingStopsOnly(rota);
       const manualList = loadPublicManualDropoffs().filter((m) => m.routeId !== rota.id);
+      const seenGlobal = new Set();
 
       compact.forEach((item) => {
         if (!Array.isArray(item)) return;
@@ -4987,22 +5066,27 @@
         }
 
         if (Array.isArray(namesArr)) {
-          targetStop.pessoas = namesArr
-            .filter((n) => typeof n === 'string' && n.trim())
-            .map((nome, nIdx) => {
-              const cleanName = nome.trim();
-              const entryId = `snap_${rota.id}_${targetStop.id}_${nIdx}`;
-              manualList.push({
-                id: entryId,
-                routeId: rota.id,
-                nome: cleanName,
-                stopId: targetStop.id,
-                stopName: targetStop.nome,
-                userId: '',
-                updatedAt: new Date().toISOString()
-              });
-              return { id: entryId, nome: cleanName, userId: '' };
+          const uniqueStopPeople = [];
+          namesArr.forEach((nome, nIdx) => {
+            if (typeof nome !== 'string' || !nome.trim()) return;
+            const cleanName = nome.trim();
+            const key = cleanName.toLowerCase();
+            if (seenGlobal.has(key)) return;
+            seenGlobal.add(key);
+
+            const entryId = `ptpax_${rota.id}_${targetStop.id}_${stopIdx}_${nIdx}_${key.replace(/[^a-z0-9]/g, '')}`;
+            manualList.push({
+              id: entryId,
+              routeId: rota.id,
+              nome: cleanName,
+              stopId: targetStop.id,
+              stopName: targetStop.nome,
+              userId: '',
+              updatedAt: new Date().toISOString()
             });
+            uniqueStopPeople.push({ id: entryId, nome: cleanName, userId: '' });
+          });
+          targetStop.pessoas = uniqueStopPeople;
         }
       });
 
@@ -5019,8 +5103,9 @@
     const rota = (state.db.rotas || []).find((r) => r.id === rId);
     if (!rId) return `${base}?painel=descida`;
 
-    // Garante que os nomes atuais também estejam gravados em rota.pontos[].pessoas
+    // Garante que os nomes atuais também estejam limpos e gravados em rota.pontos[].pessoas
     if (rota) {
+      sanitizeAndDeduplicateRoutePeople(rota);
       syncRouteStopsPeopleToCloud(rota);
     }
     const snap = rota ? encodeRoutePeopleSnapshotForUrl(rota) : '';
@@ -5061,6 +5146,8 @@
     document.getElementById('view-public-dropoff')?.classList.remove('hidden');
 
     const routes = state.db.rotas || [];
+    routes.forEach((r) => sanitizeAndDeduplicateRoutePeople(r));
+
     const targetId = state.publicRuntime.lockedRouteId || initialRouteId || state.publicRuntime.activeRouteId;
     const voltaRoute = routes.find((r) => getRouteDirectionType(r) === 'VOLTA');
     const chosen =
@@ -5460,27 +5547,28 @@
   }
 
   /**
-   * Retorna a lista consolidada de todas as pessoas cadastradas nos pontos da rota selecionada,
-   * combinando:
-   * 1. Nomes gravados diretamente nos pontos da rota (`rota.pontos[].pessoas` sincronizados na nuvem/link)
-   * 2. Nomes salvos no armazenamento manual local
-   * 3. Funcionários/passageiros cadastrados no sistema vinculados à rota ou aos pontos dela
+   * Retorna a lista consolidada e SEM DUPLICATAS de todas as pessoas cadastradas nos pontos da rota selecionada.
+   * Cada pessoa aparece somente 1 única vez na rota, com um ID único individual.
    */
   function getDropoffEntriesForRoute(rota) {
     if (!rota) return [];
     const stops = getBoardingStopsOnly(rota);
     const isVolta = getRouteDirectionType(rota) === 'VOLTA';
     const entries = [];
-    const seenKey = new Set();
+    const seenName = new Set();
 
     const addEntry = (id, nome, stopObj, source, userId = '') => {
       const cleanName = String(nome || '').trim();
       if (!cleanName || !stopObj) return;
-      const key = `${cleanName.toLowerCase()}__${stopObj.id}`;
-      if (seenKey.has(key)) return;
-      seenKey.add(cleanName.toLowerCase());
+      const nameKey = cleanName.toLowerCase();
+      // Bloqueia qualquer repetição da mesma pessoa!
+      if (seenName.has(nameKey)) return;
+      seenName.add(nameKey);
+
+      const safeId = `entry_${rota.id}_${stopObj.id}_${entries.length}_${nameKey.replace(/[^a-z0-9]/g, '')}`;
       entries.push({
-        id: id || `entry_${stopObj.id}_${entries.length}`,
+        id: safeId,
+        rawId: id || safeId,
         nome: cleanName,
         stopId: stopObj.id,
         stopName: stopObj.nome,
@@ -5489,7 +5577,14 @@
       });
     };
 
-    // 1. Nomes salvos diretamente dentro de cada ponto da rota (vem do Google Sheets e do Link compartilhado)
+    // 1. Nomes anotados/editados no navegador local têm prioridade de edição recente
+    const manualList = loadPublicManualDropoffs().filter((m) => m.routeId === rota.id);
+    manualList.forEach((m) => {
+      const st = stops.find((s) => s.id === m.stopId) || stops[0] || null;
+      addEntry(m.id, m.nome, st, 'MANUAL', m.userId || '');
+    });
+
+    // 2. Nomes salvos diretamente dentro de cada ponto da rota (vem do Google Sheets e do Link compartilhado)
     stops.forEach((st) => {
       if (Array.isArray(st.pessoas)) {
         st.pessoas.forEach((p, idx) => {
@@ -5499,13 +5594,6 @@
           addEntry(pId, pName, st, 'PONTO_ROTA', pUserId);
         });
       }
-    });
-
-    // 2. Nomes anotados manualmente no navegador local
-    const manualList = loadPublicManualDropoffs().filter((m) => m.routeId === rota.id);
-    manualList.forEach((m) => {
-      const st = stops.find((s) => s.id === m.stopId) || stops[0] || null;
-      addEntry(m.id, m.nome, st, 'MANUAL', m.userId || '');
     });
 
     // 3. Passageiros cadastrados na aba Funcionários/Usuários vinculados a esta rota ou a qualquer ponto dela
@@ -5552,6 +5640,9 @@
       routes.find((r) => r.id === state.publicRuntime.activeRouteId) ||
       routes[0];
     if (!rota) return;
+
+    // Higieniza automaticamente qualquer duplicata que tenha vindo do cache antigo
+    sanitizeAndDeduplicateRoutePeople(rota);
 
     state.publicRuntime.activeRouteId = rota.id;
     const sentido = getRouteDirectionType(rota);
@@ -5718,11 +5809,14 @@
                               <i data-lucide="user" class="w-3.5 h-3.5 text-amber-400"></i>
                               <span>${person.nome}</span>
                             </span>`
-                          : `<button type="button" data-public-edit-chip="${person.id}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/90 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 text-[11px] font-semibold text-amber-200 transition" title="Toque para editar ${person.nome}">
-                              <i data-lucide="user" class="w-3 h-3 text-amber-400"></i>
-                              <span>${person.nome}</span>
-                              <i data-lucide="pencil" class="w-2.5 h-2.5 text-sky-300 ml-0.5"></i>
-                            </button>`
+                          : `<div class="inline-flex items-center rounded-md bg-slate-950/90 border border-amber-500/30 hover:border-amber-400 overflow-hidden">
+                              <button type="button" data-public-edit-chip="${person.id}" class="inline-flex items-center gap-1 px-2 py-0.5 hover:bg-amber-500/20 text-[11px] font-semibold text-amber-200 transition" title="Toque para editar ${person.nome}">
+                                <i data-lucide="user" class="w-3 h-3 text-amber-400"></i>
+                                <span>${person.nome}</span>
+                                <i data-lucide="pencil" class="w-2.5 h-2.5 text-sky-300 ml-0.5"></i>
+                              </button>
+                              <button type="button" data-public-del-chip="${person.id}" data-public-del-user="${person.userId || ''}" class="px-1.5 py-0.5 text-[11px] font-bold text-rose-400 hover:bg-rose-500/25 hover:text-rose-200 border-l border-slate-800 transition" title="Excluir ${person.nome} deste ponto">✕</button>
+                            </div>`
                       )
                       .join('')}</div>`
                   : `<div class="mt-1 pl-8 text-[11px] text-slate-500">Nenhuma pessoa cadastrada neste ponto</div>`
@@ -5747,6 +5841,15 @@
             const entryId = chip.getAttribute('data-public-edit-chip');
             const found = entries.find((e) => e.id === entryId);
             if (found) startEditingPublicDropoffEntry(found);
+          });
+        });
+
+        stopsSummaryEl.querySelectorAll('[data-public-del-chip]').forEach((delBtn) => {
+          delBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const entryId = delBtn.getAttribute('data-public-del-chip');
+            const userId = delBtn.getAttribute('data-public-del-user');
+            removePublicDropoffEntry(entryId, userId);
           });
         });
       }
@@ -5923,7 +6026,7 @@
     const cancelBtn = document.getElementById('btn-public-cancel-edit');
     const headingText = document.getElementById('public-form-heading-text');
 
-    if (editIdInput) editIdInput.value = entry.id || '';
+    if (editIdInput) editIdInput.value = entry.nome || '';
     if (editUserInput) editUserInput.value = entry.userId || '';
     if (nameInput) {
       nameInput.value = entry.nome || '';
@@ -6008,7 +6111,7 @@
 
     const nome = (nameInput ? nameInput.value : '').trim();
     const stopId = stopSelect ? stopSelect.value : '';
-    const editingEntryId = editIdInput ? editIdInput.value : '';
+    const oldNameOrId = (editIdInput ? editIdInput.value : '').trim();
     const editingUserId = editUserInput ? editUserInput.value : '';
 
     const rota =
@@ -6027,7 +6130,10 @@
     let matchedPax = editingUserId
       ? (state.db.usuarios || []).find((u) => u.id === editingUserId)
       : (state.db.usuarios || []).find(
-          (u) => u.perfil === 'PASSAGEIRO' && String(u.nome).trim().toLowerCase() === nome.toLowerCase()
+          (u) =>
+            u.perfil === 'PASSAGEIRO' &&
+            (String(u.nome).trim().toLowerCase() === nome.toLowerCase() ||
+              (oldNameOrId && String(u.nome).trim().toLowerCase() === oldNameOrId.toLowerCase()))
         );
 
     if (matchedPax) {
@@ -6051,64 +6157,43 @@
       });
     }
 
-    // Atualiza também qualquer referência anterior em rota.pontos[].pessoas caso estivesse editando
-    if (editingEntryId && Array.isArray(rota.pontos)) {
+    // Remove o nome antigo (caso esteja renomeando ou trocando de ponto) de todos os pontos da rota
+    const namesToReplace = new Set([nome.toLowerCase()]);
+    if (oldNameOrId) namesToReplace.add(oldNameOrId.toLowerCase());
+
+    if (Array.isArray(rota.pontos)) {
       rota.pontos.forEach((pt) => {
         if (Array.isArray(pt.pessoas)) {
-          pt.pessoas = pt.pessoas.filter(
-            (p) => p.id !== editingEntryId && String(p.nome || '').trim().toLowerCase() !== nome.toLowerCase()
-          );
+          pt.pessoas = pt.pessoas.filter((p) => {
+            const pName = typeof p === 'string' ? p : p && p.nome ? p.nome : '';
+            return !namesToReplace.has(String(pName || '').trim().toLowerCase());
+          });
         }
       });
     }
 
-    // Atualiza ou insere na lista manual desta tela
-    let manualList = loadPublicManualDropoffs();
-    if (editingEntryId && !editingEntryId.startsWith('pax_')) {
-      const idx = manualList.findIndex((m) => m.id === editingEntryId);
-      if (idx >= 0) {
-        manualList[idx] = {
-          ...manualList[idx],
-          nome,
-          stopId: chosenStop.id,
-          stopName: chosenStop.nome,
-          userId: matchedPax ? matchedPax.id : manualList[idx].userId || '',
-          updatedAt: new Date().toISOString()
-        };
-      } else {
-        manualList.push({
-          id: `drop_${Date.now()}`,
-          routeId: rota.id,
-          nome,
-          stopId: chosenStop.id,
-          stopName: chosenStop.nome,
-          userId: matchedPax ? matchedPax.id : '',
-          updatedAt: new Date().toISOString()
-        });
-      }
-    } else {
-      manualList = manualList.filter(
-        (m) => !(m.routeId === rota.id && String(m.nome).trim().toLowerCase() === nome.toLowerCase())
-      );
-      manualList.push({
-        id: `drop_${Date.now()}`,
-        routeId: rota.id,
-        nome,
-        stopId: chosenStop.id,
-        stopName: chosenStop.nome,
-        userId: matchedPax ? matchedPax.id : '',
-        updatedAt: new Date().toISOString()
-      });
-    }
+    // Remove qualquer entrada anterior com o mesmo nome na lista manual desta rota e insere apenas 1 registro limpo
+    let manualList = loadPublicManualDropoffs().filter(
+      (m) => !(m.routeId === rota.id && namesToReplace.has(String(m.nome || '').trim().toLowerCase()))
+    );
+    manualList.push({
+      id: `drop_${rota.id}_${Date.now()}_${nome.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+      routeId: rota.id,
+      nome,
+      stopId: chosenStop.id,
+      stopName: chosenStop.nome,
+      userId: matchedPax ? matchedPax.id : '',
+      updatedAt: new Date().toISOString()
+    });
     savePublicManualDropoffs(manualList);
 
-    // Persiste os nomes dentro de rota.pontos[].pessoas na nuvem (Google Sheets) para aparecer em todos os links compartilhados
+    // Persiste os nomes dentro de rota.pontos[].pessoas na nuvem (Google Sheets)
     await syncRouteStopsPeopleToCloud(rota);
 
     cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
     showToast(
-      editingEntryId
+      oldNameOrId
         ? `Dados atualizados: ${nome} -> ${chosenStop.nome}`
         : `${nome} cadastrado(a) no ponto: ${chosenStop.nome}`,
       'success'
@@ -6123,29 +6208,32 @@
     if (!rota) return;
 
     const entries = getDropoffEntriesForRoute(rota);
-    const targetEntry = entries.find((e) => e.id === entryId);
+    const targetEntry = entries.find((e) => e.id === entryId || e.rawId === entryId);
+    if (!targetEntry) return;
 
+    const targetNameLower = String(targetEntry.nome || '').trim().toLowerCase();
+
+    // Remove SOMENTE a pessoa clicada da lista manual desta rota
     const filtered = loadPublicManualDropoffs().filter(
-      (m) =>
-        m.id !== entryId &&
-        !(targetEntry && m.routeId === rota.id && String(m.nome).trim().toLowerCase() === targetEntry.nome.toLowerCase())
+      (m) => !(m.routeId === rota.id && String(m.nome || '').trim().toLowerCase() === targetNameLower)
     );
     savePublicManualDropoffs(filtered);
 
+    // Remove SOMENTE a pessoa clicada de rota.pontos[].pessoas
     if (Array.isArray(rota.pontos)) {
       rota.pontos.forEach((pt) => {
         if (Array.isArray(pt.pessoas)) {
-          pt.pessoas = pt.pessoas.filter(
-            (p) =>
-              p.id !== entryId &&
-              !(targetEntry && String(p.nome || '').trim().toLowerCase() === targetEntry.nome.toLowerCase())
-          );
+          pt.pessoas = pt.pessoas.filter((p) => {
+            const pName = typeof p === 'string' ? p : p && p.nome ? p.nome : '';
+            return String(pName || '').trim().toLowerCase() !== targetNameLower;
+          });
         }
       });
     }
 
-    if (userId) {
-      const pax = (state.db.usuarios || []).find((u) => u.id === userId);
+    if (userId || targetEntry.userId) {
+      const uid = userId || targetEntry.userId;
+      const pax = (state.db.usuarios || []).find((u) => u.id === uid);
       if (pax) {
         pax.statusEmbarque = 'NAO_VOU';
         saveLocalDb();
@@ -6160,7 +6248,7 @@
     await syncRouteStopsPeopleToCloud(rota);
     cancelEditingPublicDropoffEntry();
     renderPublicDropoffView(false);
-    showToast('Removido do ponto da rota.', 'info');
+    showToast(`"${targetEntry.nome}" removido(a) do ponto.`, 'info');
   }
 
   async function clearPublicManualDropoffsForActiveRoute() {
